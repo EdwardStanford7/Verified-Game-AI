@@ -16,9 +16,6 @@ module Visibility{
   //    shrinking optimization (Section 2.3). Those are performance optimizations.
   //  * We DO implement the *adjacent-rectangle extension* idea (Section 2.2),
   //    because it affects correctness when two rectangles share a side.
-  //  * For simplicity, we build wall-rectangles on-the-fly from the grid using a
-  //    greedy maximal-rectangle tiling. In a int game you'd precompute and cache
-  //    these rectangles (and likely build the quadtree).
   // ------------------------------------------ -----------------------------------
 
   function PointOnRectBoundary(p: Point, r: Rectangle): bool
@@ -54,8 +51,8 @@ module Visibility{
   {
     hit := false;
 
-    var tEnter: int := 0;
-    var tExit: int := 1;
+    var tEnter: real := 0.0;
+    var tExit: real := 1.0;
 
     var dx: int := p.x - s.x;
     var dy: int := p.y - s.y;
@@ -63,14 +60,14 @@ module Visibility{
     // X slab: r.minX < x(t) < r.maxX
     if dx == 0 {
       // Horizontal line: only intersects interior if x is strictly inside slab
-      if !(s.x > r.minX && s.x < r.maxX) {
+      if !(s.x >= r.minX && s.x < r.maxX) {
         return;
       }
     } else {
-      var tx1: int := (r.minX - s.x) / dx;
-      var tx2: int := (r.maxX - s.x) / dx;
-      var tMinX: int := if tx1 < tx2 then tx1 else tx2;
-      var tMaxX: int := if tx1 > tx2 then tx1 else tx2;
+      var tx1: real := (r.minX as real - s.x as real) / (dx as real);
+      var tx2: real := (r.maxX as real - s.x as real) / (dx as real);
+      var tMinX: real := if tx1 < tx2 then tx1 else tx2;
+      var tMaxX: real := if tx1 > tx2 then tx1 else tx2;
 
       if tMinX > tEnter { tEnter := tMinX; }
       if tMaxX < tExit  { tExit  := tMaxX; }
@@ -83,14 +80,14 @@ module Visibility{
     // Y slab: r.minY < y(t) < r.maxY
     if dy == 0 {
       // Vertical line: only intersects interior if y is strictly inside slab
-      if !(s.y > r.minY && s.y < r.maxY) {
+      if !(s.y >= r.minY && s.y < r.maxY) {
         return;
       }
     } else {
-      var ty1: int := (r.minY - s.y) / dy;
-      var ty2: int := (r.maxY - s.y) / dy;
-      var tMinY: int := if ty1 < ty2 then ty1 else ty2;
-      var tMaxY: int := if ty1 > ty2 then ty1 else ty2;
+      var ty1: real := (r.minY as real - s.y as real) / (dy as real);
+      var ty2: real := (r.maxY as real - s.y as real) / (dy as real);
+      var tMinY: real := if ty1 < ty2 then ty1 else ty2;
+      var tMaxY: real := if ty1 > ty2 then ty1 else ty2;
 
       if tMinY > tEnter { tEnter := tMinY; }
       if tMaxY < tExit  { tExit  := tMaxY; }
@@ -102,8 +99,8 @@ module Visibility{
 
     // Intersect with the segment parameter range (0,1).
     // We treat endpoints as NOT being in the interior (open).
-    var t0: int := if tEnter > 0 then tEnter else 0;
-    var t1: int := if tExit < 1 then tExit else 1;
+    var t0: real := if tEnter > 0.0 then tEnter else 0.0;
+    var t1: real := if tExit < 1.0 then tExit else 1.0;
 
     if t0 < t1 {
       hit := true;
@@ -258,7 +255,7 @@ module Visibility{
     }
 
     ok := true;
-    for y := r.minY to r.maxY - 1 {
+    for y := r.minY to r.maxY {
       if grid[r.maxX, y] != Wall {
         ok := false;
         return;
@@ -386,8 +383,7 @@ module Visibility{
     for i := 0 to rectangles.Length
       invariant forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
     {
-      var r: Rectangle;
-      r := ExtendRectangleIfNeeded(grid, source, rectangles, i);
+      var r := ExtendRectangleIfNeeded(grid, source, rectangles, i);
       rectangles[i] := r;
 
       for x := 0 to grid.Length0
@@ -397,8 +393,7 @@ module Visibility{
           invariant forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)  // This is stupid dafny should recognize that these loops don't modify rectangles
         {
           if visible[x, y] {
-            var occ: bool;
-            occ := IsCellOccludedByRect(source, x, y, r);
+            var occ := IsCellOccludedByRect(source, x, y, r);
             if occ {
               visible[x, y] := false;
             }
