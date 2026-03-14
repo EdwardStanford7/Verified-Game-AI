@@ -370,7 +370,7 @@ module Visibility{
     occluded := h1 && h2 && h3 && h4;
   }
 
-  method RectangleFOV(grid: Grid, rectangles_in: array<Rectangle>, source: Point) returns (visible: array2<bool>)
+  method CalculateFOV(grid: Grid, rectangles_in: array<Rectangle>, source: Point) returns (visible: array2<bool>)
     requires ValidPoint(source, grid)
     requires forall j :: 0 <= j < rectangles_in.Length ==> ValidRectangle(rectangles_in[j], grid)
     ensures visible.Length0 == grid.Length0 && visible.Length1 == grid.Length1
@@ -403,25 +403,5 @@ module Visibility{
     }
 
     visible[source.x, source.y] := true;
-  }
-
-  method GetVisibleGoals(grid: Grid, rectangles: array<Rectangle>, agent_position: Point, value_function: Cell -> real)
-    returns (visible_goals: seq<Point>)
-    requires ValidPoint(agent_position, grid)
-    requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
-    requires RectanglesMatchGrid(rectangles, grid)
-  {
-    visible_goals := [];
-    var visible := RectangleFOV(grid, rectangles, agent_position);
-
-    for x := 0 to grid.Length0 {
-      for y := 0 to grid.Length1{
-        var c := grid[x, y];
-        if visible[x, y] && value_function(c) > 0.0 {
-          // Return cell centers as goal positions
-          visible_goals := visible_goals + [Point(x, y)];
-        }
-      }
-    }
   }
 }
