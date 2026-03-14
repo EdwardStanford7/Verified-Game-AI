@@ -1,22 +1,17 @@
-include "utils.dfy"
+// ----------------------------------------------------------------------------------
+// Grid-based visibility (Rectangle-Based FOV) from:
+//   Evan R.M. Debenham and Roberto Solis-Oba,
+//   "New Algorithms for Computing Field of Vision over 2D Grids" (2020)
+// https://aircconline.com/csit/papers/vol10/csit101801.pdf
+// 
+// Notes:
+// We have only implemented base rectangle FOV
+// Didn't implement the quadtree or FOV update optimizations.
+// ----------------------------------------------------------------------------------
 
+include "utils.dfy"
 module Visibility{
   import opened Utils
-
-  // -----------------------------------------------------------------------------
-  // Grid-based visibility (Rectangle-Based FOV) + pathfinding skeleton
-  //
-  // This implements the *base* Rectangle-Based FOV idea from:
-  //   Evan R.M. Debenham and Roberto Solis-Oba,
-  //   "New Algorithms for Computing Field of Vision over 2D Grids" (2020)
-  //
-  // Notes about this implementation:
-  //  * We implement the core Rectangle FOV idea from Section 2 of the paper.
-  //  * We DO NOT implement the quadtree acceleration (Section 2.1/2.4) or the
-  //    shrinking optimization (Section 2.3). Those are performance optimizations.
-  //  * We DO implement the *adjacent-rectangle extension* idea (Section 2.2),
-  //    because it affects correctness when two rectangles share a side.
-  // ------------------------------------------ -----------------------------------
 
   function PointOnRectBoundary(p: Point, r: Rectangle): bool
   {
@@ -30,23 +25,15 @@ module Visibility{
     r.minX <= x && x < r.maxX && r.minY <= y && y < r.maxY
   }
 
-  // Clamp an int to [lo, hi]
-  function ClampInt(v: int, lo: int, hi: int): int
+  method DistanceSquared(p1: Point, p2: Point) returns (distance: int)
   {
-    if v < lo then lo else if v > hi then hi else v
+    var dx := p1.x - p2.x;
+    var dy := p1.y - p2.y;
+    distance := dx * dx + dy * dy;
   }
 
-  // ----------------------------
-  // Geometry: segment vs rectangle interior intersection
-  // ----------------------------
-  // Returns true iff the segment from s to p intersects the *open interior* of r.
-  //
-  // Using open interior is important for the paper's visibility definition:
-  // boundary rays are considered visible, so a segment that only touches the
-  // rectangle boundary (edge or corner) should NOT be treated as blocked.
-  //
-  // This is the classic "slab" algorithm adapted for an OPEN axis-aligned box.
-  // -----------------------------------------------------------------------------
+  // Check if a line segment from s to p intersects the interior of rectangle r.
+  // Rectangle is treated as (open) meaning a ray that passes through the boundary but does not enter the interior is NOT considered an intersection.
   method SegmentIntersectsRectInterior(s: Point, p: Point, r: Rectangle) returns (hit: bool)
   {
     hit := false;
@@ -107,267 +94,215 @@ module Visibility{
     }
   }
 
-  // ----------------------------
-  // Choosing "relevant" rectangle vertices (paper Section 2.1)
-  // ----------------------------
-  // For an axis-aligned rectangle and a point source outside it, the two tangent
-  // vertices are determined by the source's position relative to the rectangle.
-  // These are the "relevant points" used to define the shadow wedge.
-  //
-  // We only need these points for the adjacency-extension step (Section 2.2).
-  // For occlusion marking, we use SegmentIntersectsRectInterior directly.
-  // -----------------------------------------------------------------------------
+  // Get the two relevant vertices of rectangle r with respect to source point.
+  // Relevant vertices are defined as the two farthest apart visible corners from the source.
   method RelevantVertices(source: Point, rectangle: Rectangle) returns (p1: Point, p2: Point)
   {
-    // Placeholder
-    p1 := Point(0, 0);
-    p2 := Point(0, 0);
+    var corner1 := Point(rectangle.minX, rectangle.minY); // top-left
+    var corner2 := Point(rectangle.maxX, rectangle.minY); // top-right
+    var corner3 := Point(rectangle.minX, rectangle.maxY); // bottom-left
+    var corner4 := Point(rectangle.maxX, rectangle.maxY); // bottom-right
 
-    var N := source.x < rectangle.minX;
-    var S := rectangle.maxX <= source.x;
-    var W := source.y < rectangle.minY;
-    var E := rectangle.maxY <= source.y;
+    var c1_occluded := SegmentIntersectsRectInterior(source, corner1, rectangle);
+    var c2_occluded := SegmentIntersectsRectInterior(source, corner2, rectangle);
+    var c3_occluded := SegmentIntersectsRectInterior(source, corner3, rectangle);
+    var c4_occluded := SegmentIntersectsRectInterior(source, corner4, rectangle);
 
-    // source is N
-    if N && !(W || E){
-      p1 := Point(rectangle.minX, rectangle.minY); // top-left
-      p2 := Point(rectangle.minX, rectangle.maxY); // top-right
-    }
+    var visible_corners := [];
+    if !c1_occluded { visible_corners := visible_corners + [corner1]; }
+    if !c2_occluded { visible_corners := visible_corners + [corner2]; }
+    if !c3_occluded { visible_corners := visible_corners + [corner3]; }
+    if !c4_occluded { visible_corners := visible_corners + [corner4]; }
 
-    // source is NE
-    if N && E{
-      p1 := Point(rectangle.minX, rectangle.minY); // top-left
-      p2 := Point(rectangle.maxX, rectangle.maxY); // bottom-right
-    }
-
-    // source is E
-    if E && !(N || S) {
-      p1:= Point(rectangle.minX, rectangle.maxY); // top-right
-      p2 := Point(rectangle.maxX, rectangle.maxY); // bottom-right
-    }
-
-    // source is SE
-    if S && E{
-      p1 := Point(rectangle.maxX, rectangle.minY); // bottom-left
-      p2 := Point(rectangle.minX, rectangle.maxY); // top-right
-    }
-
-    // source is S
-    if S && !(E || W){
-      p1 := Point(rectangle.maxX, rectangle.minY); // bottom-left
-      p2 := Point(rectangle.maxX, rectangle.maxY); // bottom-right
-    }
-
-    // source is SW
-    if S && W{
-      p1 := Point(rectangle.minX, rectangle.minY); // top-left
-      p2 := Point(rectangle.maxX, rectangle.maxY); // bottom-right
-    }
-
-    // source is W
-    if W && !(N || S){
-      p1 := Point(rectangle.minX, rectangle.minY); // top-left
-      p2 := Point(rectangle.maxX, rectangle.minY); // bottom-left
-    }
-
-    // source is NW
-    if  N && W {
-      p1 := Point(rectangle.maxX, rectangle.minY); // bottom-left
-      p2 := Point(rectangle.minX, rectangle.maxY); // top-right
-    }
-  }
-
-  // ----------------------------
-  // Rectangle extension for adjacency correctness (paper Section 2.2)
-  // ----------------------------
-  // If two rectangles share a side, some cells behind their combined shape can be
-  // invisible even if they are not "fully occluded" by either rectangle alone.
-  // The paper fixes this by extending one rectangle by one row/column to overlap
-  // the other rectangle at the problematic corner.
-  //
-  // Here we implement a safe version:
-  //  * We only extend by 1 cell if the added strip is entirely Wall cells.
-  //  * We extend towards a neighboring rectangle that contains the relevant vertex.
-  // -----------------------------------------------------------------------------
-
-  method CanExtendRight(grid: Grid, r: Rectangle) returns (ok: bool)
-    requires ValidRectangle(r, grid)
-    ensures ok ==> ValidRectangle(Rectangle(r.minX, r.minY, r.maxX, r.maxY + 1), grid)
-  {
-    if r.maxY == grid.Length1 {
-      ok := false;
-      return;
-    }
-
-    ok := true;
-    for x := r.minX to r.maxX
-    {
-      if grid[x, r.maxY] != Wall {
-        ok := false;
-        return;
-      }
-    }
-  }
-
-  method CanExtendLeft(grid: Grid, r: Rectangle) returns (ok: bool)
-    requires ValidRectangle(r, grid)
-    ensures ok ==> ValidRectangle(Rectangle(r.minX, r.minY - 1, r.maxX, r.maxY), grid)
-  {
-    if r.minY == 0 {
-      ok := false;
-      return;
-    }
-
-    ok := true;
-    for x := r.minX to r.maxX {
-      if grid[x, r.minY - 1] != Wall {
-        ok := false;
-        return;
-      }
-    }
-  }
-
-  method CanExtendUp(grid: Grid, r: Rectangle) returns (ok: bool)
-    requires ValidRectangle(r, grid)
-    ensures ok ==> ValidRectangle(Rectangle(r.minX - 1, r.minY, r.maxX, r.maxY), grid)
-  {
-    if r.minX == 0 {
-      ok := false;
-      return;
-    }
-
-    ok := true;
-    for y := r.minY to r.maxY {
-      if grid[r.minX - 1, y] != Wall {
-        ok := false;
-        return;
-      }
-    }
-  }
-
-  method CanExtendDown(grid: Grid, r: Rectangle) returns (ok: bool)
-    requires ValidRectangle(r, grid)
-    ensures ok ==> ValidRectangle(Rectangle(r.minX, r.minY, r.maxX + 1, r.maxY), grid)
-  {
-    if r.maxX == grid.Length0 {
-      ok := false;
-      return;
-    }
-
-    ok := true;
-    for y := r.minY to r.maxY {
-      if grid[r.maxX, y] != Wall {
-        ok := false;
-        return;
-      }
-    }
-  }
-
-  method ExtendRectangleAtPoint(grid: Grid, source: Point, rectangles: array<Rectangle>, idx: int, current: Rectangle, p: Point)
-    returns (outR: Rectangle)
-    requires ValidRectangle(current, grid)
-    requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
-    ensures ValidRectangle(outR, grid)
-  {
-    outR := current;
-
-    // Look for any other rectangle that contains this relevant point.
-    for j := 0 to rectangles.Length
-      invariant ValidRectangle(outR, grid)
-    {
-      if j != idx && PointOnRectBoundary(p, rectangles[j]) {
-        // If rectangles[j] does NOT occlude p, extend current to overlap rectangles[j].
-        var point := Point(p.x, p.y);
-        var occludes := SegmentIntersectsRectInterior(source, point, rectangles[j]);
-        // Try extending across the side shared with rectangles[j] that contains p.
-        if !occludes {
-          // Right adjacency
-          if rectangles[j].minY == outR.maxY && p.y == outR.maxY {
-            var can := CanExtendRight(grid, outR);
-            if can {
-              outR := Rectangle(outR.minX, outR.minY, outR.maxX, outR.maxY + 1);
-            }
-          }
-          // Left adjacency
-          if rectangles[j].maxY == outR.minY && p.y == outR.minY {
-            var can := CanExtendLeft(grid, outR);
-            if can {
-              outR := Rectangle(outR.minX, outR.minY - 1, outR.maxX, outR.maxY);
-            }
-          }
-          // Up adjacency
-          if rectangles[j].minX == outR.maxX && p.x == outR.maxX {
-            var can := CanExtendUp(grid, outR);
-            if can {
-              outR := Rectangle(outR.minX - 1, outR.minY, outR.maxX, outR.maxY);
-            }
-          }
-          // Down adjacency
-          if rectangles[j].maxX == outR.minX && p.x == outR.minX {
-            var can := CanExtendDown(grid, outR);
-            if can {
-              outR := Rectangle(outR.minX, outR.minY, outR.maxX + 1, outR.maxY);
-            }
-          }
+    // Find the farthest pair of visible corners. This is guaranteed to be the correct pair of tangent vertices.
+    var max_dist := -1;
+    p1 := corner1; // dummy init to satisfy dafny
+    p2 := corner1; // dummy init to satisfy dafny
+    for i := 0 to |visible_corners| {
+      for j := i + 1 to |visible_corners| {
+        var d := DistanceSquared(visible_corners[i], visible_corners[j]);
+        if d > max_dist {
+          max_dist := d;
+          p1 := visible_corners[i];
+          p2 := visible_corners[j];
         }
       }
     }
   }
 
-  method ExtendRectangleIfNeeded(grid: Grid, source: Point, rectangles: array<Rectangle>, idx: int) returns (rOut: Rectangle)
-    requires 0 <= idx < rectangles.Length
-    requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
-    ensures ValidRectangle(rOut, grid)
+  // I think by changing the definition of occlusion, this rectangle extension bug is avoided.
+  // Keeping the code commented out for now but probably remove entirely in final version.
+
+  //   // ----------------------------------------------------------------------------------
+  //   // Rectangle extension for adjacency correctness (paper Section 2.2)
+  //   //
+  //   // If two rectangles share a side, some cells behind their combined shape can be
+  //   // invisible even if they are not "fully occluded" by either rectangle alone.
+  //   // The paper fixes this by extending one rectangle by one row/column to overlap
+  //   // the other rectangle at the problematic corner.
+  //   // ----------------------------------------------------------------------------------
+
+  //   method CanExtendRight(grid: Grid, r: Rectangle) returns (ok: bool)
+  //     requires ValidRectangle(r, grid)
+  //     ensures ok ==> ValidRectangle(Rectangle(r.minX, r.minY, r.maxX, r.maxY + 1), grid)
+  //   {
+  //     if r.maxY == grid.Length1 {
+  //       ok := false;
+  //       return;
+  //     }
+
+  //     ok := true;
+  //     for x := r.minX to r.maxX
+  //     {
+  //       if grid[x, r.maxY] != Wall {
+  //         ok := false;
+  //         return;
+  //       }
+  //     }
+  //   }
+
+  //   method CanExtendLeft(grid: Grid, r: Rectangle) returns (ok: bool)
+  //     requires ValidRectangle(r, grid)
+  //     ensures ok ==> ValidRectangle(Rectangle(r.minX, r.minY - 1, r.maxX, r.maxY), grid)
+  //   {
+  //     if r.minY == 0 {
+  //       ok := false;
+  //       return;
+  //     }
+
+  //     ok := true;
+  //     for x := r.minX to r.maxX {
+  //       if grid[x, r.minY - 1] != Wall {
+  //         ok := false;
+  //         return;
+  //       }
+  //     }
+  //   }
+
+  //   method CanExtendUp(grid: Grid, r: Rectangle) returns (ok: bool)
+  //     requires ValidRectangle(r, grid)
+  //     ensures ok ==> ValidRectangle(Rectangle(r.minX - 1, r.minY, r.maxX, r.maxY), grid)
+  //   {
+  //     if r.minX == 0 {
+  //       ok := false;
+  //       return;
+  //     }
+
+  //     ok := true;
+  //     for y := r.minY to r.maxY {
+  //       if grid[r.minX - 1, y] != Wall {
+  //         ok := false;
+  //         return;
+  //       }
+  //     }
+  //   }
+
+  //   method CanExtendDown(grid: Grid, r: Rectangle) returns (ok: bool)
+  //     requires ValidRectangle(r, grid)
+  //     ensures ok ==> ValidRectangle(Rectangle(r.minX, r.minY, r.maxX + 1, r.maxY), grid)
+  //   {
+  //     if r.maxX == grid.Length0 {
+  //       ok := false;
+  //       return;
+  //     }
+
+  //     ok := true;
+  //     for y := r.minY to r.maxY {
+  //       if grid[r.maxX, y] != Wall {
+  //         ok := false;
+  //         return;
+  //       }
+  //     }
+  //   }
+
+  //   method ExtendRectangleAtPoint(grid: Grid, source: Point, rectangles: array<Rectangle>, idx: int, current: Rectangle, p: Point)
+  //     returns (outR: Rectangle)
+  //     requires ValidRectangle(current, grid)
+  //     requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
+  //     ensures ValidRectangle(outR, grid)
+  //   {
+  //     outR := current;
+
+  //     // Look for any other rectangle that contains this relevant point.
+  //     for j := 0 to rectangles.Length
+  //       invariant ValidRectangle(outR, grid)
+  //     {
+  //       if j != idx && PointOnRectBoundary(p, rectangles[j]) {
+  //         // If rectangles[j] does NOT occlude p, extend current to overlap rectangles[j].
+  //         var point := Point(p.x, p.y);
+  //         var occludes := SegmentIntersectsRectInterior(source, point, rectangles[j]);
+  //         // Try extending across the side shared with rectangles[j] that contains p.
+  //         if !occludes {
+  //           // Right adjacency
+  //           if rectangles[j].minY == outR.maxY && p.y == outR.maxY {
+  //             var can := CanExtendRight(grid, outR);
+  //             if can {
+  //               outR := Rectangle(outR.minX, outR.minY, outR.maxX, outR.maxY + 1);
+  //             }
+  //           }
+  //           // Left adjacency
+  //           if rectangles[j].maxY == outR.minY && p.y == outR.minY {
+  //             var can := CanExtendLeft(grid, outR);
+  //             if can {
+  //               outR := Rectangle(outR.minX, outR.minY - 1, outR.maxX, outR.maxY);
+  //             }
+  //           }
+  //           // Up adjacency
+  //           if rectangles[j].minX == outR.maxX && p.x == outR.maxX {
+  //             var can := CanExtendUp(grid, outR);
+  //             if can {
+  //               outR := Rectangle(outR.minX - 1, outR.minY, outR.maxX, outR.maxY);
+  //             }
+  //           }
+  //           // Down adjacency
+  //           if rectangles[j].maxX == outR.minX && p.x == outR.minX {
+  //             var can := CanExtendDown(grid, outR);
+  //             if can {
+  //               outR := Rectangle(outR.minX, outR.minY, outR.maxX + 1, outR.maxY);
+  //             }
+  //           }
+  //         }
+  //       }
+  //     }
+  //   }
+
+  //   method ExtendRectangleIfNeeded(grid: Grid, source: Point, rectangles: array<Rectangle>, idx: int) returns (rOut: Rectangle)
+  //     requires 0 <= idx < rectangles.Length
+  //     requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
+  //     ensures ValidRectangle(rOut, grid)
+  //   {
+  //     rOut := rectangles[idx];
+
+  //     var before := rOut;
+  //     var p1, p2 := RelevantVertices(source, rOut);
+
+  //     rOut := ExtendRectangleAtPoint(grid, source, rectangles, idx, rOut, p1);
+  //     rOut := ExtendRectangleAtPoint(grid, source, rectangles, idx, rOut, p2);
+  //   }
+
+  // Check if a single cell (x,y) is occluded by rectangle r with respect to source point.
+  // Cells are occluded if at least 3 corners are occluded by r.
+  method CellOccludedByRect(source: Point, x: int, y: int, r: Rectangle) returns (occluded: bool)
   {
-    rOut := rectangles[idx];
-
-    // Do a small fixed number of refinement iterations. Extension is at most 1 cell per relevant point, so 2 iterations is enough for this baseline.
-    for iter := 0 to 2
-      invariant ValidRectangle(rOut, grid)
-    {
-      var before := rOut;
-      var p1, p2 := RelevantVertices(source, rOut);
-
-      rOut := ExtendRectangleAtPoint(grid, source, rectangles, idx, rOut, p1);
-      rOut := ExtendRectangleAtPoint(grid, source, rectangles, idx, rOut, p2);
-
-      if rOut == before {
-        break;
-      }
-    }
-  }
-
-  // ----------------------------
-  // Cell occlusion test (single rectangle)
-  // ----------------------------
-  // A cell is treated as "not visible" from the source if it is *entirely*
-  // occluded. For a convex occluded region, it's enough to check the 4 corners.
-  //
-  // We exclude cells that are part of the blocking rectangle itself (those cells
-  // are typically visible as walls).
-  // -----------------------------------------------------------------------------
-  method IsCellOccludedByRect(source: Point, x: int, y: int, r: Rectangle) returns (occluded: bool)
-  {
-    if CellInRect(x, y, r) {
-      occluded := false;
-      return;
-    }
-
     var c1 := Point(x, y);
     var c2 := Point(x + 1, y);
     var c3 := Point(x, y + 1);
     var c4 := Point(x + 1, y + 1);
 
-    var h1: bool;
-    var h2: bool;
-    var h3: bool;
-    var h4: bool;
-    h1 := SegmentIntersectsRectInterior(source, c1, r);
-    h2 := SegmentIntersectsRectInterior(source, c2, r);
-    h3 := SegmentIntersectsRectInterior(source, c3, r);
-    h4 := SegmentIntersectsRectInterior(source, c4, r);
+    var h1 := SegmentIntersectsRectInterior(source, c1, r);
+    var h2 := SegmentIntersectsRectInterior(source, c2, r);
+    var h3 := SegmentIntersectsRectInterior(source, c3, r);
+    var h4 := SegmentIntersectsRectInterior(source, c4, r);
 
-    occluded := h1 && h2 && h3 && h4;
+    var num_occluded := 0;
+    if h1 { num_occluded := num_occluded + 1; }
+    if h2 { num_occluded := num_occluded + 1; }
+    if h3 { num_occluded := num_occluded + 1; }
+    if h4 { num_occluded := num_occluded + 1; }
+
+    // The paper considers a cell occluded only if all 4 corners are blocked but I think it creates more realistic visibility and require at least 2 visible corners to be considered visible to avoid "flickering" cells that are right on the edge of visibility.
+    // occluded := h1 && h2 && h3 && h4;
+    occluded := num_occluded >= 3;
   }
 
   method CalculateFOV(grid: Grid, rectangles_in: array<Rectangle>, source: Point) returns (visible: array2<bool>)
@@ -383,8 +318,8 @@ module Visibility{
     for i := 0 to rectangles.Length
       invariant forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
     {
-      var r := ExtendRectangleIfNeeded(grid, source, rectangles, i);
-      rectangles[i] := r;
+      //   var r := ExtendRectangleIfNeeded(grid, source, rectangles, i);
+      //   rectangles[i] := r;
 
       for x := 0 to grid.Length0
         invariant forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid) // This is stupid dafny should recognize that these loops don't modify rectangles
@@ -393,7 +328,7 @@ module Visibility{
           invariant forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)  // This is stupid dafny should recognize that these loops don't modify rectangles
         {
           if visible[x, y] {
-            var occ := IsCellOccludedByRect(source, x, y, r);
+            var occ := CellOccludedByRect(source, x, y, rectangles[i]);
             if occ {
               visible[x, y] := false;
             }
