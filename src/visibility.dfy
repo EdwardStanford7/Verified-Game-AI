@@ -13,6 +13,7 @@ include "utils.dfy"
 module Visibility{
   import opened Utils
 
+  // Check if a point p is on the boundary of rectangle r.
   function PointOnRectBoundary(p: Point, r: Rectangle): bool
   {
     p.x >= r.minX && p.x < r.maxX &&
@@ -20,11 +21,61 @@ module Visibility{
     (p.x == r.minX || p.x == r.maxX - 1 || p.y == r.minY || p.y == r.maxY - 1)
   }
 
+  // Calculate the squared distance between two points. We use this to find the farthest pair of visible corners.
   method DistanceSquared(p1: Point, p2: Point) returns (distance: int)
   {
     var dx := p1.x - p2.x;
     var dy := p1.y - p2.y;
     distance := dx * dx + dy * dy;
+  }
+
+  // If two rectangles share a side, some cells behind their combined shape can be invisible even if they are not "fully occluded" by either rectangle alone.
+  // We fix this by extending one rectangle by one row/column to overlap the other rectangle at the problematic corner.
+  method ExtendRectangleAtPoint(grid: Grid, source: Point, rectangles: array<Rectangle>, idx: int, current: Rectangle, p: Point)
+    returns (outR: Rectangle)
+    requires ValidRectangle(current, grid)
+    requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
+    ensures ValidRectangle(outR, grid)
+  {
+    outR := current;
+
+    // Look for any other rectangle that contains this relevant point. This would be a quadtree search in the paper but we just do a linear scan for simplicity.
+    for j := 0 to rectangles.Length
+      invariant ValidRectangle(outR, grid)
+    {
+      if j != idx && PointOnRectBoundary(p, rectangles[j]) {
+        // If rectangles[j] does NOT occlude p, extend current to overlap rectangles[j].
+        var point := Point(p.x, p.y);
+        var occludes := SegmentIntersectsRectInterior(source, point, rectangles[j]);
+        // Extend across the side shared with rectangles[j] that contains p.
+        if !occludes {
+          if current.minX == rectangles[j].maxX{
+            outR := Rectangle(current.minX - 1, current.minY, current.maxX, current.maxY);
+          } else if (current.maxX == rectangles[j].minX) {
+            outR := Rectangle(current.minX, current.minY, current.maxX + 1, current.maxY);
+          } else if (current.minY == rectangles[j].maxY) {
+            outR := Rectangle(current.minX, current.minY - 1, current.maxX, current.maxY);
+          } else if (current.maxY == rectangles[j].minY) {
+            outR := Rectangle(current.minX, current.minY, current.maxX, current.maxY + 1);
+          }
+        }
+      }
+    }
+  }
+
+  // Extend the rectangle at idx if needed to ensure that it properly occludes its relevant vertices, then return the extended rectangle.
+  method ExtendRectangle(grid: Grid, source: Point, rectangles: array<Rectangle>, idx: int) returns (rOut: Rectangle)
+    requires 0 <= idx < rectangles.Length
+    requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
+    ensures ValidRectangle(rOut, grid)
+  {
+    rOut := rectangles[idx];
+
+    var before := rOut;
+    var p1, p2 := RelevantVertices(source, rOut);
+
+    rOut := ExtendRectangleAtPoint(grid, source, rectangles, idx, rOut, p1);
+    rOut := ExtendRectangleAtPoint(grid, source, rectangles, idx, rOut, p2);
   }
 
   // Check if a line segment from s to p intersects the interior of rectangle r.
@@ -148,6 +199,7 @@ module Visibility{
     occluded := num_occluded >= 3;
   }
 
+  // Given a grid, a list of rectangles extracted from the grid, and a source point, calculate the field of view (visibility) from the source point.
   method CalculateFOV(grid: Grid, rectangles_in: array<Rectangle>, source: Point) returns (visible: array2<bool>)
     requires ValidPoint(source, grid)
     requires forall j :: 0 <= j < rectangles_in.Length ==> ValidRectangle(rectangles_in[j], grid)
@@ -161,6 +213,9 @@ module Visibility{
     for i := 0 to rectangles.Length
       invariant forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
     {
+      var r := ExtendRectangle(grid, source, rectangles, i);
+      rectangles[i] := r;
+
       for x := 0 to grid.Length0
         invariant forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid) // This is stupid dafny should recognize that these loops don't modify rectangles
       {
@@ -168,7 +223,7 @@ module Visibility{
           invariant forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)  // This is stupid dafny should recognize that these loops don't modify rectangles
         {
           if visible[x, y] {
-            var occ := CellOccludedByRect(source, x, y, rectangles[i]);
+            var occ := CellOccludedByRect(source, x, y, r);
             if occ {
               visible[x, y] := false;
             }

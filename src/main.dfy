@@ -4,19 +4,61 @@ include "utils.dfy"
 import opened Utils
 import opened Pathfind
 
-method PrintVisibility(grid: array2<Cell>, visible: array2<bool>, source: Point)
+method PrintVisibility(grid: array2<Cell>, visible: array2<bool>, agent_position: Point)
   requires grid.Length0 == visible.Length0 && grid.Length1 == visible.Length1
 {
   for i := 0 to grid.Length0 {
     for j := 0 to grid.Length1 {
-      if i == source.x && j == source.y {
-        print "S ";
+      if i == agent_position.x && j == agent_position.y {
+        print "A ";
       } else if visible[i, j] {
         var c := grid[i, j];
-        print if c == Wall then "W " else "V ";
+        print if c == Wall then "# " else ". ";
       } else {
-        print "X ";
+        print "  ";
       }
+    }
+    print "\n";
+  }
+}
+
+method PrintRectangles(rectangles: array<Rectangle>, grid: Grid)
+  requires grid.Length0 == 25 && grid.Length1 == 25
+  requires forall i :: 0 <= i < rectangles.Length ==> ValidRectangle(rectangles[i], grid)
+{
+  var print_grid := new int[25,25] ((i, j) => 0);
+
+  for i := 0 to rectangles.Length {
+    for x := rectangles[i].minX to rectangles[i].maxX {
+      for y := rectangles[i].minY to rectangles[i].maxY {
+        if print_grid[x, y] == 0 {
+          print_grid[x, y] := i + 1;
+        }else{
+          print "ERROR OVERLAPPING RECTANGLE\n";
+        }
+      }
+    }
+  }
+
+  for i := 0 to print_grid.Length0 {
+    for j := 0 to print_grid.Length1 {
+      if print_grid[i, j] == 0 {
+        print "  ";
+      } else {
+        print print_grid[i, j];
+        print " ";
+      }
+    }
+    print "\n";
+  }
+}
+
+method PrintGrid(grid: Grid)
+{
+  for i := 0 to grid.Length0 {
+    for j := 0 to grid.Length1 {
+      var c := grid[i, j];
+      print if c == Wall then "# " else if c == Food then "F " else ". ";
     }
     print "\n";
   }
@@ -24,18 +66,29 @@ method PrintVisibility(grid: array2<Cell>, visible: array2<bool>, source: Point)
 
 method Main()
 {
-  // for testing, maybe read in a file that describes the grid and the print out the visibility grid.
-  var grid := new Cell[5,5];
-  grid[0,0] := Empty; grid[0,1] := Empty; grid[0,2] := Wall;  grid[0,3] := Empty; grid[0,4] := Food;
-  grid[1,0] := Empty; grid[1,1] := Wall;  grid[1,2] := Wall;  grid[1,3] := Empty; grid[1,4] := Empty;
-  grid[2,0] := Empty; grid[2,1] := Empty; grid[2,2] := Empty; grid[2,3] := Empty; grid[2,4] := Empty;
-  grid[3,0] := Food;  grid[3,1] := Empty; grid[3,2] := Wall;  grid[3,3] := Wall;  grid[3,4] := Empty;
-  grid[4,0] := Empty; grid[4,1] := Empty; grid[4,2] := Empty; grid[4,3] := Empty; grid[4,4] := Food;
+  // Test case: 25x25 grid with walls forming a cross in the middle and food in the corners and a few other places, agent starts in the top left quadrant. This should test visibility around corners and through narrow gaps as well as pathfinding around walls to reach goals.
+  var grid := new Cell[25,25] ((i, j) => Empty);
+
+  // Place some walls
+  for i := 5 to 10 {
+    grid[5,i] := Wall;
+    grid[i,5] := Wall;
+    grid[19,i] := Wall;
+    grid[i,19] := Wall;
+  }
+
+  print "Initial Grid:\n";
+  PrintGrid(grid);
+
   var rectangles := ExtractWallRectangles(grid);
+
+  print "\nExtracted Rectangles:\n";
+  PrintRectangles(rectangles, grid);
 
   var agent_position := Point(0, 4);
   var value_function := (c: Cell) => if c == Food then 1.0 else 0.0;
   var visible, path := pathfind(grid, rectangles, agent_position, value_function);
 
+  print "\nVisibility from Agent Position:\n";
   PrintVisibility(grid, visible, agent_position);
 }
