@@ -8,37 +8,66 @@ module Pathfind {
   import opened AStar
 
   // Driver method that combines the above methods to find the optimal path for an agent to reach the best visible goal in a grid environment.
-  method pathfind(grid: Grid, rectangles: array<Rectangle>, agent_position: Point, value_function: (Point, Point, Cell) -> real) returns (visible: array2<bool>, path: seq<Point>)
+  method pathfind<T>(grid: array2<T>, rectangles: array<Rectangle>, agent_position: Point, value: (Point, Point, T) -> real, traversable: T -> bool)  returns (visible: array2<bool>, path: seq<Point>)
     requires ValidPoint(agent_position, grid)
     requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
     ensures visible.Length0 == grid.Length0 && visible.Length1 == grid.Length1
     ensures forall i :: 0 <= i < |path| ==> ValidPoint(path[i], grid)
   {
     visible := CalculateFOV(grid, rectangles, agent_position);
-    var goal := GetGoal(grid, visible, value_function, agent_position);
-    path := A_Star(grid, agent_position, goal);
+    var goal := GetGoal(grid, visible, value, agent_position);
+    path := A_Star(grid, agent_position, goal, traversable);
   }
 
-  method GetGoal(grid: Grid, visible: array2<bool>, value_function: ((Point, Point, Cell) -> real), agent_position: Point)
-    returns (goal: Point)
-    requires grid.Length0 == visible.Length0 && grid.Length1 == visible.Length1
+  // Call once during initialization to extract rectangles from the grid then use those rectangles for all calls to pathfind function.
+  method ExtractBlockingRectangles<T>(grid: array2<T>, visibility_blocking: T -> bool) returns (rectangles: array<Rectangle>)
+    ensures forall i :: 0 <= i < rectangles.Length ==> ValidRectangle(rectangles[i], grid)
   {
-    goal := agent_position; // Default to current position if no visible cells have value > 0.
+    var rectangles_seq := [];
 
-    // Find the best value among visible cells.
-    var best_value := 0.0;
-    var distance := 0;
-
+    var visited := new bool[grid.Length0, grid.Length1] ((i, j) => (false));
     for x := 0 to grid.Length0 {
       for y := 0 to grid.Length1 {
-        if visible[x, y] {
-          var value := value_function(agent_position, Point(x, y), grid[x, y]);
-          if value > best_value {
-            best_value := value;
-            goal := Point(x, y);
+        visited[x, y] := false;
+      }
+    }
+
+    for x := 0 to grid.Length0
+      invariant forall r :: r in rectangles_seq ==> ValidRectangle(r, grid)
+    {
+      for y := 0 to grid.Length1
+        invariant forall r :: r in rectangles_seq ==> ValidRectangle(r, grid)
+      {
+        if visibility_blocking(grid[x, y]) && !visited[x, y] {
+
+          // Determine width
+          var x_size := 0;
+          while x + x_size < grid.Length0 && visibility_blocking(grid[x + x_size, y]) && !visited[x + x_size, y]
+            invariant x + x_size <= grid.Length0
+          {
+            x_size := x_size + 1;
           }
+
+          // Determine height
+          var y_size := 1;
+          while y + y_size < grid.Length1 && forall xx {:trigger grid[xx, y + y_size]} :: x <= xx < x + x_size ==> visibility_blocking(grid[xx, y + y_size]) && !visited[xx, y + y_size]
+            invariant y + y_size <= grid.Length1
+          {
+            y_size := y_size + 1;
+          }
+
+          // Mark visited
+          for xx := x to x + x_size {
+            for yy := y to y + y_size {
+              visited[xx, yy] := true;
+            }
+          }
+
+          rectangles_seq := rectangles_seq + [Rectangle(x, y, x + x_size, y + y_size)];
         }
       }
     }
+
+    rectangles := new Rectangle[|rectangles_seq|] (i requires 0<= i < |rectangles_seq| => rectangles_seq[i]);
   }
 }

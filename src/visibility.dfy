@@ -1,7 +1,7 @@
 // ----------------------------------------------------------------------------------
-// Grid-based visibility (Rectangle-Based FOV) from:
+// array2<T>-based visibility (Rectangle-Based FOV) from:
 //   Evan R.M. Debenham and Roberto Solis-Oba,
-//   "New Algorithms for Computing Field of Vision over 2D Grids" (2020)
+//   "New Algorithms for Computing Field of Vision over 2D array2<T>s" (2020)
 // https://aircconline.com/csit/papers/vol10/csit101801.pdf
 // 
 // Notes:
@@ -23,7 +23,7 @@ module Visibility{
 
   // If two rectangles share a side, some cells behind their combined shape can be invisible even if they are not "fully occluded" by either rectangle alone.
   // We fix this by extending one rectangle by one row/column to overlap the other rectangle at the problematic corner.
-  method ExtendRectangleAtPoint(grid: Grid, source: Point, rectangles: array<Rectangle>, idx: int, current: Rectangle, p: Point)
+  method ExtendRectangleAtPoint<T>(grid: array2<T>, source: Point, rectangles: array<Rectangle>, idx: int, current: Rectangle, p: Point)
     returns (outR: Rectangle)
     requires ValidRectangle(current, grid)
     requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
@@ -56,7 +56,7 @@ module Visibility{
   }
 
   // Extend the rectangle at idx if needed to ensure that it properly occludes its relevant vertices, then return the extended rectangle.
-  method ExtendRectangle(grid: Grid, source: Point, rectangles: array<Rectangle>, idx: int) returns (rOut: Rectangle)
+  method ExtendRectangle<T>(grid: array2<T>, source: Point, rectangles: array<Rectangle>, idx: int) returns (rOut: Rectangle)
     requires 0 <= idx < rectangles.Length
     requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
     ensures ValidRectangle(rOut, grid)
@@ -192,7 +192,7 @@ module Visibility{
   }
 
   // Given a grid, a list of rectangles extracted from the grid, and a source point, calculate the field of view (visibility) from the source point.
-  method CalculateFOV(grid: Grid, rectangles_in: array<Rectangle>, source: Point) returns (visible: array2<bool>)
+  method CalculateFOV<T>(grid: array2<T>, rectangles_in: array<Rectangle>, source: Point) returns (visible: array2<bool>)
     requires ValidPoint(source, grid)
     requires forall j :: 0 <= j < rectangles_in.Length ==> ValidRectangle(rectangles_in[j], grid)
     ensures visible.Length0 == grid.Length0 && visible.Length1 == grid.Length1

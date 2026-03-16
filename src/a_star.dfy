@@ -3,10 +3,10 @@ include "utils.dfy"
 module AStar {
   import opened Utils
 
-  // Return the 4-directional non-wall neighbors of p that lie within the grid.
-  method GetNeighbors(grid: Grid, p: Point) returns (neighbors: seq<Point>)
+  // Return the 4-directional traversable neighbors of p that lie within the grid.
+  method GetNeighbors<T>(grid: array2<T>, p: Point, traversable: T -> bool) returns (neighbors: seq<Point>)
     requires ValidPoint(p, grid)
-    ensures forall n :: n in neighbors ==> ValidPoint(n, grid) && grid[n.x, n.y] != Wall
+    ensures forall n :: n in neighbors ==> ValidPoint(n, grid) && traversable(grid[n.x, n.y])
   {
     neighbors := [];
     var candidates := [
@@ -16,10 +16,10 @@ module AStar {
       Point(p.x, p.y - 1) // W
     ];
     for i := 0 to 4
-      invariant forall n :: n in neighbors ==> ValidPoint(n, grid) && grid[n.x, n.y] != Wall
+      invariant forall n :: n in neighbors ==> ValidPoint(n, grid) && traversable(grid[n.x, n.y])
     {
       var c := candidates[i];
-      if ValidPoint(c, grid) && grid[c.x, c.y] != Wall {
+      if ValidPoint(c, grid) && traversable(grid[c.x, c.y]) {
         neighbors := neighbors + [c];
       }
     }
@@ -44,7 +44,7 @@ module AStar {
 
   // Walk came_from backwards from `goal` to reconstruct the path.
   // A step-counter prevents non-termination if the map were ever cyclic.
-  method ReconstructPath(came_from: map<Point, Point>, goal: Point, grid: Grid)
+  method ReconstructPath<T>(came_from: map<Point, Point>, goal: Point, grid: array2<T>)
     returns (path: seq<Point>)
     requires ValidPoint(goal, grid)
     requires forall p :: p in came_from ==> ValidPoint(p,           grid)
@@ -71,7 +71,7 @@ module AStar {
 
   // A* on a 4-connected grid.
   // Returns the optimal path from agent_position to goal, or [] if unreachable.
-  method A_Star(grid: Grid, agent_position: Point, goal: Point) returns (path: seq<Point>)
+  method A_Star<T>(grid: array2<T>, agent_position: Point, goal: Point, traversable: T -> bool) returns (path: seq<Point>)
     ensures forall i :: 0 <= i < |path| ==> ValidPoint(path[i], grid)
   {
     path := [];
@@ -80,10 +80,10 @@ module AStar {
     if !ValidPoint(agent_position, grid) || !ValidPoint(goal, grid) {
       return;
     }
-    if grid[agent_position.x, agent_position.y] == Wall {
+    if !traversable(grid[agent_position.x, agent_position.y]) {
       return;
     }
-    if grid[goal.x, goal.y] == Wall {
+    if !traversable(grid[goal.x, goal.y]) {
       return;
     }
 
@@ -133,7 +133,7 @@ module AStar {
         visited[current.x, current.y] := true;
 
         // Relax edges to each passable neighbor.
-        var neighbors := GetNeighbors(grid, current);
+        var neighbors := GetNeighbors(grid, current, traversable);
         var current_g := if current in g_score
         then g_score[current]
         else grid.Length0 * grid.Length1 + 1;

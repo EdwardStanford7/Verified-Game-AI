@@ -4,18 +4,20 @@ include "utils.dfy"
 import opened Utils
 import opened Pathfind
 
-method PrintGrid(grid: Grid)
+datatype Cell = Empty | Low | High | Food
+
+method PrintGrid(grid: array2<Cell>)
 {
   for i := 0 to grid.Length0 {
     for j := 0 to grid.Length1 {
       var c := grid[i, j];
-      print if c == Wall then "# " else if c == Food then "F " else ". ";
+      print if c == High then "H " else if c == Low then "L " else if c == Food then "F " else ". ";
     }
     print "\n";
   }
 }
 
-method PrintRectangles(rectangles: array<Rectangle>, grid: Grid)
+method PrintRectangles(rectangles: array<Rectangle>, grid: array2<Cell>)
   requires grid.Length0 == 25 && grid.Length1 == 25
   requires forall i :: 0 <= i < rectangles.Length ==> ValidRectangle(rectangles[i], grid)
 {
@@ -58,7 +60,7 @@ method PrintPath(grid: array2<Cell>, visible: array2<bool>, path: seq<Point>, ag
         print_grid[i, j] := "A ";
       } else if visible[i, j] {
         var c := grid[i, j];
-        print_grid[i, j] := if c == Wall then "# " else if c == Food then "F " else ". ";
+        print_grid[i, j] := if c == High then "H " else if c == Low then "L " else if c == Food then "F " else ". ";
       } else {
         print_grid[i, j] := "  ";
       }
@@ -95,10 +97,15 @@ method Main()
 
   // Place some walls
   for i := 5 to 10 {
-    grid[5,i] := Wall;
-    grid[i,5] := Wall;
-    grid[19,i] := Wall;
-    grid[i,19] := Wall;
+    grid[5,i] := High;
+    grid[i,5] := High;
+    grid[19,i] := High;
+    grid[i,19] := High;
+  }
+
+  for i := 12 to 17{
+    grid[i, 8] := Low;
+    grid[7, i] := Low;
   }
 
   // Some goals to pathfind to.
@@ -109,13 +116,16 @@ method Main()
   print "Initial Grid:\n";
   PrintGrid(grid);
 
-  var rectangles := ExtractWallRectangles(grid);
+  var visibility_blocking := (c: Cell) => c == High;
+  var rectangles := ExtractBlockingRectangles(grid, visibility_blocking);
+
   print "\nExtracted Rectangles:\n";
   PrintRectangles(rectangles, grid);
 
   var agent_position := Point(12, 12);
   var value_function := (agent_pos: Point, target_pos: Point, cell: Cell) => (if cell == Food then 1.0 else 0.0) / (ManhattanDistance(agent_pos, target_pos) + 1) as real; // Preference for closer goals if multiple visible.
-  var visible, path := pathfind(grid, rectangles, agent_position, value_function);
+  var traversable := (c: Cell) => c != High && c != Low;
+  var visible, path := pathfind(grid, rectangles, agent_position, value_function, traversable);
 
   print "\nPath to Best Visible Goal:\n";
   PrintPath(grid, visible, path, agent_position);
