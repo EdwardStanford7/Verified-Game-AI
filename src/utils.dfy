@@ -12,28 +12,17 @@ module Utils{
     0 <= rectangle.minY && rectangle.minY < rectangle.maxY && rectangle.maxY <= grid.Length1
   }
 
-  predicate RectanglesMatchGrid(rectangles: array<Rectangle>, grid: Grid)
-    reads grid
-    reads rectangles
+  // Calculate the Manhattan distance between two points.
+  function ManhattanDistance(p1: Point, p2: Point): int
   {
-    // All rectangles are valid and cover only Wall cells
-    forall i :: 0 <= i < rectangles.Length ==>
-                  ValidRectangle(rectangles[i], grid) &&
-                  forall x, y :: rectangles[i].minX <= x < rectangles[i].maxX && rectangles[i].minY <= y < rectangles[i].maxY ==>
-                                   grid[x, y] == Wall
-                                   &&
-                                   // All Wall cells are covered by some rectangle, and all non-Wall cells are not covered
-                                   forall x, y :: 0 <= x < grid.Length0 && 0 <= y < grid.Length1 ==>
-                                                    (grid[x, y] == Wall <==>
-                                                     exists i :: 0 <= i < rectangles.Length &&
-                                                                 rectangles[i].minX <= x < rectangles[i].maxX &&
-                                                                 rectangles[i].minY <= y < rectangles[i].maxY)
+    var dx := p1.x - p2.x;
+    var dy := p1.y - p2.y;
+    (if dx >= 0 then dx else -dx) + (if dy >= 0 then dy else -dy)
   }
 
   // Call once during initialization to extract rectangles from the grid then use those rectangles for all calls to pathfind function.
   method ExtractWallRectangles(grid: Grid) returns (rectangles: array<Rectangle>)
     ensures forall i :: 0 <= i < rectangles.Length ==> ValidRectangle(rectangles[i], grid)
-    ensures RectanglesMatchGrid(rectangles, grid)
   {
     var rectangles_seq := [];
 
@@ -44,41 +33,42 @@ module Utils{
       }
     }
 
-    for x := 0 to grid.Length0 {
-      for y := 0 to grid.Length1 {
+    for x := 0 to grid.Length0
+      invariant forall r :: r in rectangles_seq ==> ValidRectangle(r, grid)
+    {
+      for y := 0 to grid.Length1
+        invariant forall r :: r in rectangles_seq ==> ValidRectangle(r, grid)
+      {
         if grid[x, y] == Wall && !visited[x, y] {
 
           // Determine width
-          var width := 0;
-          while x + width < grid.Length0 && grid[x + width, y] == Wall && !visited[x + width, y]
-            invariant x + width <= grid.Length0
+          var x_size := 0;
+          while x + x_size < grid.Length0 && grid[x + x_size, y] == Wall && !visited[x + x_size, y]
+            invariant x + x_size <= grid.Length0
           {
-            width := width + 1;
+            x_size := x_size + 1;
           }
 
           // Determine height
-          var height := 0;
-          while y + height < grid.Length1 && forall xx {:trigger grid[xx, y + height]} :: x <= xx < x + width ==> grid[xx, y + height] == Wall && !visited[xx, y + height]
-            invariant y + height <= grid.Length1
+          var y_size := 1;
+          while y + y_size < grid.Length1 && forall xx {:trigger grid[xx, y + y_size]} :: x <= xx < x + x_size ==> grid[xx, y + y_size] == Wall && !visited[xx, y + y_size]
+            invariant y + y_size <= grid.Length1
           {
-            height := height + 1;
+            y_size := y_size + 1;
           }
 
           // Mark visited
-          for xx := x to x + width {
-            for yy := y to y + height {
+          for xx := x to x + x_size {
+            for yy := y to y + y_size {
               visited[xx, yy] := true;
             }
           }
 
-          rectangles_seq := rectangles_seq + [Rectangle(x, y, x + width, y + height)];
+          rectangles_seq := rectangles_seq + [Rectangle(x, y, x + x_size, y + y_size)];
         }
       }
     }
 
     rectangles := new Rectangle[|rectangles_seq|] (i requires 0<= i < |rectangles_seq| => rectangles_seq[i]);
-
-    // TODO: maybe deal with proving this later if we get around to it, this isn't part of the core algorithm we're trying to verify.
-    assume {:axiom} RectanglesMatchGrid(rectangles, grid);
   }
 }

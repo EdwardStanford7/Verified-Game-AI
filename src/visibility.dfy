@@ -21,14 +21,6 @@ module Visibility{
     (p.x == r.minX || p.x == r.maxX - 1 || p.y == r.minY || p.y == r.maxY - 1)
   }
 
-  // Calculate the squared distance between two points. We use this to find the farthest pair of visible corners.
-  method DistanceSquared(p1: Point, p2: Point) returns (distance: int)
-  {
-    var dx := p1.x - p2.x;
-    var dy := p1.y - p2.y;
-    distance := dx * dx + dy * dy;
-  }
-
   // If two rectangles share a side, some cells behind their combined shape can be invisible even if they are not "fully occluded" by either rectangle alone.
   // We fix this by extending one rectangle by one row/column to overlap the other rectangle at the problematic corner.
   method ExtendRectangleAtPoint(grid: Grid, source: Point, rectangles: array<Rectangle>, idx: int, current: Rectangle, p: Point)
@@ -166,7 +158,7 @@ module Visibility{
     p2 := corner1; // dummy init to satisfy dafny
     for i := 0 to |visible_corners| {
       for j := i + 1 to |visible_corners| {
-        var d := DistanceSquared(visible_corners[i], visible_corners[j]);
+        var d := ManhattanDistance(visible_corners[i], visible_corners[j]);
         if d > max_dist {
           max_dist := d;
           p1 := visible_corners[i];

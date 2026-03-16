@@ -4,19 +4,12 @@ include "utils.dfy"
 import opened Utils
 import opened Pathfind
 
-method PrintVisibility(grid: array2<Cell>, visible: array2<bool>, agent_position: Point)
-  requires grid.Length0 == visible.Length0 && grid.Length1 == visible.Length1
+method PrintGrid(grid: Grid)
 {
   for i := 0 to grid.Length0 {
     for j := 0 to grid.Length1 {
-      if i == agent_position.x && j == agent_position.y {
-        print "A ";
-      } else if visible[i, j] {
-        var c := grid[i, j];
-        print if c == Wall then "# " else ". ";
-      } else {
-        print "  ";
-      }
+      var c := grid[i, j];
+      print if c == Wall then "# " else if c == Food then "F " else ". ";
     }
     print "\n";
   }
@@ -53,12 +46,43 @@ method PrintRectangles(rectangles: array<Rectangle>, grid: Grid)
   }
 }
 
-method PrintGrid(grid: Grid)
+method PrintPath(grid: array2<Cell>, visible: array2<bool>, path: seq<Point>, agent_position: Point)
+  requires grid.Length0 == visible.Length0 && grid.Length1 == visible.Length1
+  requires forall i :: 0 <= i < |path| ==> ValidPoint(path[i], grid)
 {
+  var print_grid := new string[grid.Length0, grid.Length1] ;
+
   for i := 0 to grid.Length0 {
     for j := 0 to grid.Length1 {
-      var c := grid[i, j];
-      print if c == Wall then "# " else if c == Food then "F " else ". ";
+      if i == agent_position.x && j == agent_position.y {
+        print_grid[i, j] := "A ";
+      } else if visible[i, j] {
+        var c := grid[i, j];
+        print_grid[i, j] := if c == Wall then "# " else if c == Food then "F " else ". ";
+      } else {
+        print_grid[i, j] := "  ";
+      }
+    }
+  }
+
+  for k := 0 to |path| {
+    if k == 0 || k == |path| - 1 {
+      continue;
+    }
+    var p := path[k];
+    if !visible[p.x, p.y] {
+      print "ERROR: path includes non-visible cell at (" ;
+      print p.x ;
+      print ", " ;
+      print p.y ;
+      print")\n";
+    }
+    print_grid[p.x, p.y] := "@ ";
+  }
+
+  for i := 0 to print_grid.Length0 {
+    for j := 0 to print_grid.Length1 {
+      print print_grid[i, j];
     }
     print "\n";
   }
@@ -77,18 +101,22 @@ method Main()
     grid[i,19] := Wall;
   }
 
+  // Some goals to pathfind to.
+  grid[4,16]:= Food;
+  grid[15,4]:= Food;
+  grid[20,20]:= Food;
+
   print "Initial Grid:\n";
   PrintGrid(grid);
 
   var rectangles := ExtractWallRectangles(grid);
-
   print "\nExtracted Rectangles:\n";
   PrintRectangles(rectangles, grid);
 
-  var agent_position := Point(0, 4);
-  var value_function := (c: Cell) => if c == Food then 1.0 else 0.0;
+  var agent_position := Point(12, 12);
+  var value_function := (agent_pos: Point, target_pos: Point, cell: Cell) => (if cell == Food then 1.0 else 0.0) / (ManhattanDistance(agent_pos, target_pos) + 1) as real; // Preference for closer goals if multiple visible.
   var visible, path := pathfind(grid, rectangles, agent_position, value_function);
 
-  print "\nVisibility from Agent Position:\n";
-  PrintVisibility(grid, visible, agent_position);
+  print "\nPath to Best Visible Goal:\n";
+  PrintPath(grid, visible, path, agent_position);
 }
