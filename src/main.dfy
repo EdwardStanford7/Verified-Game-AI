@@ -95,16 +95,17 @@ method Main()
   // Test case: 25x25 grid with walls forming a cross in the middle and food in the corners and a few other places, agent starts in the top left quadrant. This should test visibility around corners and through narrow gaps as well as pathfinding around walls to reach goals.
   var grid := new Cell[25,25] ((i, j) => Empty);
 
-  // Place some walls
+  // Place some vision blocking walls
   for i := 5 to 10 {
     grid[5,i] := High;
     grid[i,5] := High;
     grid[19,i] := High;
-    grid[i,19] := High;
+    grid[i,19] := Low;
   }
 
+  // Place some pathing obstacles
   for i := 12 to 17{
-    grid[i, 8] := Low;
+    grid[i, 8] := High;
     grid[7, i] := Low;
   }
 
