@@ -1,8 +1,60 @@
-module Utils{
+module Utils {
+  export Public
+    reveals Point
+    provides ValidPoint, ManhattanDistance
+
+  export Internal extends Public
+    reveals *
+
+  export extends Internal
+
   datatype Point = Point(x: int, y: int)
   datatype Rectangle = Rectangle(minX: int, minY: int, maxX: int, maxY: int)
 
-  predicate ValidPoint<T>(p: Point, grid: array2<T>) { 0 <= p.x < grid.Length0 && 0 <= p.y < grid.Length1 }
+  predicate ValidPoint<T>(p: Point, grid: array2<T>) {
+    0 <= p.x < grid.Length0 && 0 <= p.y < grid.Length1
+  }
+
+  predicate WalkablePoint<T>(p: Point, grid: array2<T>, traversable: T -> bool)
+    reads grid
+  {
+    ValidPoint(p, grid) && traversable(grid[p.x, p.y])
+  }
+
+  // 4-connected adjacency on the grid.
+  predicate Adjacent(p: Point, q: Point)
+  {
+    (p.x == q.x && (p.y + 1 == q.y || q.y + 1 == p.y)) ||
+    (p.y == q.y && (p.x + 1 == q.x || q.x + 1 == p.x))
+  }
+
+  // Every point in the path is inside the grid and traversable.
+  predicate WalkablePath<T>(path: seq<Point>, grid: array2<T>, traversable: T -> bool)
+    reads grid
+    decreases |path|
+  {
+    |path| == 0 ||
+    (WalkablePoint(path[0], grid, traversable) && WalkablePath(path[1..], grid, traversable))
+  }
+
+  // Consecutive path points are 4-neighbor moves.
+  predicate ConsecutivePath(path: seq<Point>)
+    decreases |path|
+  {
+    |path| <= 1 ||
+    (Adjacent(path[0], path[1]) && ConsecutivePath(path[1..]))
+  }
+
+  // A non-empty, walkable, 4-connected path from start to goal.
+  predicate FeasiblePath<T>(path: seq<Point>, start: Point, goal: Point, grid: array2<T>, traversable: T -> bool)
+    reads grid
+  {
+    0 < |path| &&
+    path[0] == start &&
+    path[|path| - 1] == goal &&
+    WalkablePath(path, grid, traversable) &&
+    ConsecutivePath(path)
+  }
 
   predicate RectangleInRange<T>(rectangle: Rectangle, grid: array2<T>)
     reads grid
@@ -18,35 +70,42 @@ module Utils{
     forall x, y :: rectangle.minX <= x < rectangle.maxX && rectangle.minY <= y < rectangle.maxY ==> visibility_blocking(grid[x, y])
   }
 
-  function ManhattanDistance(p1: Point, p2: Point): int
+  lemma WalkablePathIndex<T>(path: seq<Point>, i: int, grid: array2<T>, traversable: T -> bool)
+    requires 0 <= i < |path|
+    requires WalkablePath(path, grid, traversable)
+    ensures WalkablePoint(path[i], grid, traversable)
+    decreases |path|
   {
-    var dx := p1.x - p2.x;
-    var dy := p1.y - p2.y;
-    (if dx >= 0 then dx else -dx) + (if dy >= 0 then dy else -dy)
+    if i == 0 {
+      assert WalkablePoint(path[0], grid, traversable);
+    } else {
+      assert 0 < i;
+      assert WalkablePath(path[1..], grid, traversable);
+      assert 0 <= i - 1 < |path[1..]|;
+      WalkablePathIndex(path[1..], i - 1, grid, traversable);
+      assert path[1..][i - 1] == path[i];
+    }
   }
 
-  method GetGoal<T>(grid: array2<T>, visible: array2<bool>, value_function: ((Point, Point, T) -> real), agent_position: Point)
-    returns (goal: Point)
-    requires grid.Length0 == visible.Length0 && grid.Length1 == visible.Length1
+  lemma FeasiblePathHasWalkablePoints<T>(
+    path: seq<Point>, start: Point, goal: Point, grid: array2<T>, traversable: T -> bool)
+    requires FeasiblePath(path, start, goal, grid, traversable)
+    ensures forall p :: p in path ==> WalkablePoint(p, grid, traversable)
   {
-    goal := agent_position; // Default to current position if no visible cells have value > 0.
-
-    // Find the best value among visible cells.
-    var best_value := 0.0;
-    var distance := 0;
-
-    for x := 0 to grid.Length0 {
-      for y := 0 to grid.Length1 {
-        if visible[x, y] {
-          var value := value_function(agent_position, Point(x, y), grid[x, y]);
-          if value > best_value {
-            best_value := value;
-            goal := Point(x, y);
-          }
-        }
+    assert WalkablePath(path, grid, traversable);
+    assert forall p :: p in path ==> WalkablePoint(p, grid, traversable) by {
+      forall p | p in path
+        ensures WalkablePoint(p, grid, traversable)
+      {
+        var i :| 0 <= i < |path| && path[i] == p;
+        WalkablePathIndex(path, i, grid, traversable);
       }
     }
   }
 
-
+  function ManhattanDistance(p1: Point, p2: Point): int {
+    var dx := p1.x - p2.x;
+    var dy := p1.y - p2.y;
+    (if dx >= 0 then dx else -dx) + (if dy >= 0 then dy else -dy)
+  }
 }

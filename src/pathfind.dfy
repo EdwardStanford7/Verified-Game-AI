@@ -3,72 +3,124 @@ include "visibility.dfy"
 include "a_star.dfy"
 
 module Pathfind {
-  import opened Utils
+  import Utils = Utils`Public
+  import UtilsPrivate = Utils`Internal
   import opened Visibility
   import opened AStar
 
-  // Driver method that combines the above methods to find the optimal path for an agent to reach the best visible goal in a grid environment.
-  method pathfind<T>(grid: array2<T>, rectangles: array<Rectangle>, agent_position: Point, value: (Point, Point, T) -> real, traversable: T -> bool)  returns (visible: array2<bool>, path: seq<Point>)
-    requires ValidPoint(agent_position, grid)
-    requires forall j :: 0 <= j < rectangles.Length ==> RectangleInRange(rectangles[j], grid)
-    ensures visible.Length0 == grid.Length0 && visible.Length1 == grid.Length1
-    ensures forall i :: 0 <= i < |path| ==> ValidPoint(path[i], grid)
-  {
-    visible := CalculateFOV(grid, rectangles, agent_position);
-    var goal := GetGoal(grid, visible, value, agent_position);
-    path := A_Star(grid, agent_position, goal, traversable);
-  }
+  export
+    provides Utils
+    reveals Pathfinder
+    provides Pathfinder.grid
+    provides Pathfinder.rectangles
+    provides Pathfinder.Pathfind
 
-  // Call once during initialization to extract rectangles from the grid then use those rectangles for all calls to pathfind function.
-  method ExtractBlockingRectangles<T>(grid: array2<T>, visibility_blocking: T -> bool) returns (rectangles: array<Rectangle>)
-    ensures forall i :: 0 <= i < rectangles.Length ==> RectangleInRange(rectangles[i], grid)
-    ensures forall i :: 0 <= i < rectangles.Length ==> RectangleMatchesGrid(rectangles[i], grid, visibility_blocking)
-  {
-    var rectangles_seq := [];
-    var visited := new bool[grid.Length0, grid.Length1]((i, j) => false);
+  class Pathfinder<T> {
+    const grid: array2<T>
+    const rectangles: array<UtilsPrivate.Rectangle>
+    const visibility_blocking: T -> bool
+    const traversable: T -> bool
 
-    for x := 0 to grid.Length0
-      invariant forall r :: r in rectangles_seq ==> RectangleInRange(r, grid)
-      invariant forall r :: r in rectangles_seq ==> RectangleMatchesGrid(r, grid, visibility_blocking)
+    constructor(grid: array2<T>, visibility_blocking: T -> bool, traversable: T -> bool)
+      ensures this.grid == grid
+      ensures forall j :: 0 <= j < rectangles.Length ==>
+                            UtilsPrivate.RectangleInRange(rectangles[j], grid)
     {
-      for y := 0 to grid.Length1
-        invariant forall r :: r in rectangles_seq ==> RectangleInRange(r, grid)
-        invariant forall r :: r in rectangles_seq ==> RectangleMatchesGrid(r, grid, visibility_blocking)
+      var rectangles_seq := ExtractBlockingRectangles(grid, visibility_blocking);
+      this.grid := grid;
+      this.rectangles := rectangles_seq;
+      this.visibility_blocking := visibility_blocking;
+      this.traversable := traversable;
+    }
+
+    method Pathfind(agent_position: Utils.Point, value: (Utils.Point, Utils.Point, T) -> real) returns (path: seq<Utils.Point>, visible: array2<bool>)
+      requires Utils.ValidPoint(agent_position, grid)
+      requires  forall j :: 0 <= j < rectangles.Length ==>
+                              UtilsPrivate.RectangleInRange(rectangles[j], grid)
+      ensures grid.Length0 == visible.Length0 && grid.Length1 == visible.Length1
+      ensures forall p :: p in path ==> Utils.ValidPoint(p, grid)
+      // Should the ensures from FOV and A_Star be carried over here?
+    {
+      var extended_rectangles := [];
+      visible, extended_rectangles := CalculateFOV(grid, rectangles, agent_position);
+      var goal := GetGoal(grid, visible, value, agent_position);
+      path := A_Star(grid, agent_position, goal, traversable);
+    }
+
+    // Call once during initialization to extract rectangles from the grid then use those rectangles for all future FOV calls.
+    static method ExtractBlockingRectangles(grid: array2<T>, visibility_blocking: T -> bool) returns (rectangles: array<UtilsPrivate.Rectangle>)
+      ensures forall i :: 0 <= i < rectangles.Length ==> UtilsPrivate.RectangleInRange(rectangles[i], grid)
+      ensures forall i :: 0 <= i < rectangles.Length ==> UtilsPrivate.RectangleMatchesGrid(rectangles[i], grid, visibility_blocking)
+    {
+      var rectangles_seq := [];
+      var visited := new bool[grid.Length0, grid.Length1]((i, j) => false);
+
+      for x := 0 to grid.Length0
+        invariant forall r :: r in rectangles_seq ==> UtilsPrivate.RectangleInRange(r, grid)
+        invariant forall r :: r in rectangles_seq ==> UtilsPrivate.RectangleMatchesGrid(r, grid, visibility_blocking)
       {
-        if visibility_blocking(grid[x, y]) && !visited[x, y] {
+        for y := 0 to grid.Length1
+          invariant forall r :: r in rectangles_seq ==> UtilsPrivate.RectangleInRange(r, grid)
+          invariant forall r :: r in rectangles_seq ==> UtilsPrivate.RectangleMatchesGrid(r, grid, visibility_blocking)
+        {
+          if visibility_blocking(grid[x, y]) && !visited[x, y] {
 
-          var x_size := 0;
-          while x + x_size < grid.Length0 && visibility_blocking(grid[x + x_size, y]) && !visited[x + x_size, y]
-            invariant x + x_size <= grid.Length0
-            invariant forall xx :: x <= xx < x + x_size ==> visibility_blocking(grid[xx, y])
-          {
-            x_size := x_size + 1;
+            var x_size := 0;
+            while x + x_size < grid.Length0 && visibility_blocking(grid[x + x_size, y]) && !visited[x + x_size, y]
+              invariant x + x_size <= grid.Length0
+              invariant forall xx :: x <= xx < x + x_size ==> visibility_blocking(grid[xx, y])
+            {
+              x_size := x_size + 1;
+            }
+
+            var y_size := 1;
+            while y + y_size < grid.Length1 &&
+              (forall xx {:trigger grid[xx, y + y_size]} :: x <= xx < x + x_size ==>
+              visibility_blocking(grid[xx, y + y_size]) && !visited[xx, y + y_size])
+              invariant 1 <= y_size <= grid.Length1 - y
+              invariant y + y_size <= grid.Length1
+              invariant forall xx, yy :: x <= xx < x + x_size && y <= yy < y + y_size ==>
+                                           visibility_blocking(grid[xx, yy])
+            {
+              y_size := y_size + 1;
+            }
+
+            // Mark visited
+            for xx := x to x + x_size {
+              for yy := y to y + y_size {
+                visited[xx, yy] := true;
+              }
+            }
+
+            rectangles_seq := rectangles_seq + [UtilsPrivate.Rectangle(x, y, x + x_size, y + y_size)];
           }
+        }
+      }
 
-          var y_size := 1;
-          while y + y_size < grid.Length1 &&
-            (forall xx {:trigger grid[xx, y + y_size]} :: x <= xx < x + x_size ==>
-            visibility_blocking(grid[xx, y + y_size]) && !visited[xx, y + y_size])
-            invariant 1 <= y_size <= grid.Length1 - y
-            invariant y + y_size <= grid.Length1
-            invariant forall xx, yy :: x <= xx < x + x_size && y <= yy < y + y_size ==>
-                                         visibility_blocking(grid[xx, yy])
-          {
-            y_size := y_size + 1;
-          }
+      rectangles := new UtilsPrivate.Rectangle[|rectangles_seq|](i requires 0 <= i < |rectangles_seq| => rectangles_seq[i]);
+    }
 
-          // Mark visited
-          for xx := x to x + x_size {
-            for yy := y to y + y_size {
-              visited[xx, yy] := true;
+    method GetGoal<T>(grid: array2<T>, visible: array2<bool>, value_function: ((Utils.Point, Utils.Point, T) -> real), agent_position: Utils.Point)
+      returns (goal: Utils.Point)
+      requires grid.Length0 == visible.Length0 && grid.Length1 == visible.Length1
+    {
+      goal := agent_position; // Default to current position if no visible cells have value > 0.
+
+      // Find the best value among visible cells.
+      var best_value := 0.0;
+      var distance := 0;
+
+      for x := 0 to grid.Length0 {
+        for y := 0 to grid.Length1 {
+          if visible[x, y] {
+            var value := value_function(agent_position, Utils.Point(x, y), grid[x, y]);
+            if value > best_value {
+              best_value := value;
+              goal := Utils.Point(x, y);
             }
           }
-
-          rectangles_seq := rectangles_seq + [Rectangle(x, y, x + x_size, y + y_size)];
         }
       }
     }
-
-    rectangles := new Rectangle[|rectangles_seq|](i requires 0 <= i < |rectangles_seq| => rectangles_seq[i]);
   }
 }

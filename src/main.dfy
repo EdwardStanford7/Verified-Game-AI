@@ -1,5 +1,4 @@
 include "pathfind.dfy"
-include "utils.dfy"
 
 import opened Utils
 import opened Pathfind
@@ -12,37 +11,6 @@ method PrintGrid(grid: array2<Cell>)
     for j := 0 to grid.Length1 {
       var c := grid[i, j];
       print if c == High then "H " else if c == Low then "L " else if c == Food then "F " else ". ";
-    }
-    print "\n";
-  }
-}
-
-method PrintRectangles(rectangles: array<Rectangle>, grid: array2<Cell>)
-  requires grid.Length0 == 25 && grid.Length1 == 25
-  requires forall i :: 0 <= i < rectangles.Length ==> RectangleInRange(rectangles[i], grid)
-{
-  var print_grid := new int[25,25] ((i, j) => 0);
-
-  for i := 0 to rectangles.Length {
-    for x := rectangles[i].minX to rectangles[i].maxX {
-      for y := rectangles[i].minY to rectangles[i].maxY {
-        if print_grid[x, y] == 0 {
-          print_grid[x, y] := i + 1;
-        }else{
-          print "ERROR OVERLAPPING RECTANGLE\n";
-        }
-      }
-    }
-  }
-
-  for i := 0 to print_grid.Length0 {
-    for j := 0 to print_grid.Length1 {
-      if print_grid[i, j] == 0 {
-        print "  ";
-      } else {
-        print print_grid[i, j];
-        print " ";
-      }
     }
     print "\n";
   }
@@ -118,16 +86,13 @@ method Main()
   PrintGrid(grid);
 
   var visibility_blocking := (c: Cell) => c == High;
-  var rectangles := ExtractBlockingRectangles(grid, visibility_blocking);
-
-  print "\nExtracted Rectangles:\n";
-  PrintRectangles(rectangles, grid);
-
-  var agent_position := Point(12, 12);
-  var value_function := (agent_pos: Point, target_pos: Point, cell: Cell) => (if cell == Food then 1.0 else 0.0) / (ManhattanDistance(agent_pos, target_pos) + 1) as real; // Preference for closer goals if multiple visible.
   var traversable := (c: Cell) => c != High && c != Low;
-  var visible, path := pathfind(grid, rectangles, agent_position, value_function, traversable);
+  var value_function := (agent_pos: Point, target_pos: Point, cell: Cell) => (if cell == Food then 1.0 else 0.0) / (ManhattanDistance(agent_pos, target_pos) + 1) as real; // Preference for closer goals if multiple visible.
+
+  var pf := new Pathfinder<Cell>(grid, visibility_blocking, traversable);
+  var start := Utils.Point(12, 12);
+  var path, visible := pf.Pathfind(start, value_function);
 
   print "\nPath to Best Visible Goal:\n";
-  PrintPath(grid, visible, path, agent_position);
+  PrintPath(grid, visible, path, start);
 }
