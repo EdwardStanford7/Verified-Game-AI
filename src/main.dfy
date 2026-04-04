@@ -19,7 +19,7 @@ method PrintGrid(grid: array2<Cell>)
 
 method PrintRectangles(rectangles: array<Rectangle>, grid: array2<Cell>)
   requires grid.Length0 == 25 && grid.Length1 == 25
-  requires forall i :: 0 <= i < rectangles.Length ==> ValidRectangle(rectangles[i], grid)
+  requires forall i :: 0 <= i < rectangles.Length ==> RectangleInRange(rectangles[i], grid)
 {
   var print_grid := new int[25,25] ((i, j) => 0);
 

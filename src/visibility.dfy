@@ -108,9 +108,9 @@ module Visibility {
     current: Rectangle,
     p: Point)
     returns (outR: Rectangle)
-    requires ValidRectangle(current, grid)
-    requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
-    ensures  ValidRectangle(outR, grid)
+    requires RectangleInRange(current, grid)
+    requires forall j :: 0 <= j < rectangles.Length ==> RectangleInRange(rectangles[j], grid)
+    ensures  RectangleInRange(outR, grid)
   {
     outR := current;
 
@@ -119,7 +119,7 @@ module Visibility {
     var p_d := Point(2 * p.x, 2 * p.y);
 
     for j := 0 to rectangles.Length
-      invariant ValidRectangle(outR, grid)
+      invariant RectangleInRange(outR, grid)
     {
       if j != idx && PointOnRectBoundary(p, rectangles[j]) {
         var rect_d  := RectDoubled(rectangles[j]);
@@ -149,8 +149,8 @@ module Visibility {
     idx: int)
     returns (rOut: Rectangle)
     requires 0 <= idx < rectangles.Length
-    requires forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
-    ensures  ValidRectangle(rOut, grid)
+    requires forall j :: 0 <= j < rectangles.Length ==> RectangleInRange(rectangles[j], grid)
+    ensures  RectangleInRange(rOut, grid)
   {
     rOut := rectangles[idx];
     var p1, p2 := RelevantVertices(source, rOut);
@@ -247,7 +247,7 @@ module Visibility {
   method CalculateFOV<T>(grid: array2<T>, rectangles_in: array<Rectangle>, source: Point)
     returns (visible: array2<bool>)
     requires ValidPoint(source, grid)
-    requires forall j :: 0 <= j < rectangles_in.Length ==> ValidRectangle(rectangles_in[j], grid)
+    requires forall j :: 0 <= j < rectangles_in.Length ==> RectangleInRange(rectangles_in[j], grid)
     ensures  visible.Length0 == grid.Length0 && visible.Length1 == grid.Length1
   {
     var rectangles := new Rectangle[rectangles_in.Length](
@@ -256,17 +256,17 @@ module Visibility {
     visible := new bool[grid.Length0, grid.Length1]((i, j) => true);
 
     for i := 0 to rectangles.Length
-      invariant forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
+      invariant forall j :: 0 <= j < rectangles.Length ==> RectangleInRange(rectangles[j], grid)
     {
       var r := ExtendRectangle(grid, source, rectangles, i);
       rectangles[i] := r;
 
       for x := 0 to grid.Length0
         // Dafny cannot infer that the inner loops do not modify `rectangles`.
-        invariant forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
+        invariant forall j :: 0 <= j < rectangles.Length ==> RectangleInRange(rectangles[j], grid)
       {
         for y := 0 to grid.Length1
-          invariant forall j :: 0 <= j < rectangles.Length ==> ValidRectangle(rectangles[j], grid)
+          invariant forall j :: 0 <= j < rectangles.Length ==> RectangleInRange(rectangles[j], grid)
         {
           if visible[x, y] {
             var occ := CellOccludedByRect(source, x, y, r);

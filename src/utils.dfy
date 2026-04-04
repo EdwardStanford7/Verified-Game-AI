@@ -4,10 +4,18 @@ module Utils{
 
   predicate ValidPoint<T>(p: Point, grid: array2<T>) { 0 <= p.x < grid.Length0 && 0 <= p.y < grid.Length1 }
 
-  predicate ValidRectangle<T>(rectangle: Rectangle, grid: array2<T>)
+  predicate RectangleInRange<T>(rectangle: Rectangle, grid: array2<T>)
+    reads grid
   {
     0 <= rectangle.minX && rectangle.minX < rectangle.maxX && rectangle.maxX <= grid.Length0 &&
     0 <= rectangle.minY && rectangle.minY < rectangle.maxY && rectangle.maxY <= grid.Length1
+  }
+
+  predicate RectangleMatchesGrid<T>(rectangle: Rectangle, grid: array2<T>, visibility_blocking: T -> bool)
+    requires RectangleInRange(rectangle, grid)
+    reads grid
+  {
+    forall x, y :: rectangle.minX <= x < rectangle.maxX && rectangle.minY <= y < rectangle.maxY ==> visibility_blocking(grid[x, y])
   }
 
   function ManhattanDistance(p1: Point, p2: Point): int
@@ -40,5 +48,5 @@ module Utils{
     }
   }
 
-  
+
 }
