@@ -49,13 +49,6 @@ module Pathfind {
     {
       var rectangles_array := new UtilsPrivate.Rectangle[|rectangles|](
                                                          i requires 0 <= i < |rectangles| => rectangles[i]);
-      assert forall j :: 0 <= j < rectangles_array.Length ==> UtilsPrivate.RectangleInRange(rectangles_array[j], grid) by {
-        forall j | 0 <= j < rectangles_array.Length
-          ensures UtilsPrivate.RectangleInRange(rectangles_array[j], grid)
-        {
-          assert rectangles_array[j] == rectangles[j];
-        }
-      }
       var extended_rectangles := [];
       visible, extended_rectangles := CalculateFOV(grid, rectangles_array, agent_position);
       var goal := GetGoal(visible, value, agent_position);

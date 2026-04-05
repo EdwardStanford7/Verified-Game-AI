@@ -76,14 +76,8 @@ module Utils {
     ensures WalkablePoint(path[i], grid, traversable)
     decreases |path|
   {
-    if i == 0 {
-      assert WalkablePoint(path[0], grid, traversable);
-    } else {
-      assert 0 < i;
-      assert WalkablePath(path[1..], grid, traversable);
-      assert 0 <= i - 1 < |path[1..]|;
+    if i != 0 {
       WalkablePathIndex(path[1..], i - 1, grid, traversable);
-      assert path[1..][i - 1] == path[i];
     }
   }
 
