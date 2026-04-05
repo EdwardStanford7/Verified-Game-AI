@@ -91,7 +91,7 @@ method Main()
 
   var pf := new Pathfinder<Cell>(grid, visibility_blocking, traversable);
   var start := Utils.Point(12, 12);
-  var path, visible := pf.Pathfind(start, value_function);
+  var path, visible := pf.FindPath(start, value_function);
 
   print "\nPath to Best Visible Goal:\n";
   PrintPath(grid, visible, path, start);

@@ -11,7 +11,7 @@ module Pathfind {
   export
     provides Utils
     reveals Pathfinder
-    provides Pathfinder.grid, Pathfinder.Valid, Pathfinder.Pathfind
+    provides Pathfinder.grid, Pathfinder.Valid, Pathfinder.FindPath
 
   class Pathfinder<T> {
     const grid: array2<T>
@@ -37,7 +37,7 @@ module Pathfind {
       this.traversable := traversable;
     }
 
-    method Pathfind(
+    method FindPath(
       agent_position: Utils.Point,
       value: (Utils.Point, Utils.Point, T) -> real)
       returns (path: seq<Utils.Point>, visible: array2<bool>)
