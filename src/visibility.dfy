@@ -39,7 +39,7 @@ module Visibility {
     (if b4 then 1 else 0)
   }
 
-  function IsRectangleCorner(p: Point, r: Rectangle): bool {
+  ghost predicate IsRectangleCorner(p: Point, r: Rectangle) {
     p == Point(r.minX, r.minY) ||
     p == Point(r.maxX, r.minY) ||
     p == Point(r.minX, r.maxY) ||
@@ -68,19 +68,19 @@ module Visibility {
   // --------------------------------------------------------------------------
 
   // Check if a point p is on the boundary of rectangle r (regular grid coords).
-  function PointOnRectBoundary(p: Point, r: Rectangle): bool {
+  predicate PointOnRectBoundary(p: Point, r: Rectangle) {
     p.x >= r.minX && p.x <= r.maxX &&
     p.y >= r.minY && p.y <= r.maxY &&
     (p.x == r.minX || p.x == r.maxX || p.y == r.minY || p.y == r.maxY)
   }
 
   // --------------------------------------------------------------------------
-  // Geometric specification and executable wrappers.
+  // Geometric predicates shared by proofs and executable code.
   // --------------------------------------------------------------------------
 
-  // Pure specification for whether the segment from s to p intersects the open
-  // interior of rectangle r. A segment that only grazes the boundary is not a hit.
-  function SegmentIntersectsRectInteriorSpec(s: Point, p: Point, r: Rectangle): bool {
+  // Whether the segment from s to p intersects the open interior of rectangle r.
+  // A segment that only grazes the boundary is not a hit.
+  predicate SegmentIntersectsRectInterior(s: Point, p: Point, r: Rectangle) {
     var dx := p.x - s.x;
     var dy := p.y - s.y;
     var xOk := dx != 0 || (s.x >= r.minX && s.x < r.maxX);
@@ -103,15 +103,9 @@ module Visibility {
       t0 < t1
   }
 
-  method SegmentIntersectsRectInterior(s: Point, p: Point, r: Rectangle) returns (hit: bool)
-    ensures hit == SegmentIntersectsRectInteriorSpec(s, p, r)
-  {
-    hit := SegmentIntersectsRectInteriorSpec(s, p, r);
-  }
-
   // Check whether cell (x, y) is occluded by rectangle r from source.
   // A cell is occluded when at least 3 of its 4 corners are blocked by r.
-  function CellOccludedByRectSpec(source: Point, x: int, y: int, r: Rectangle): bool {
+  predicate CellOccludedByRect(source: Point, x: int, y: int, r: Rectangle) {
     var src := CellCenterDoubled(source);
     var dr  := RectDoubled(r);
 
@@ -121,23 +115,17 @@ module Visibility {
     var c4 := Point(2 * x + 2, 2 * y + 2);
 
     CountTrue4(
-      SegmentIntersectsRectInteriorSpec(src, c1, dr),
-      SegmentIntersectsRectInteriorSpec(src, c2, dr),
-      SegmentIntersectsRectInteriorSpec(src, c3, dr),
-      SegmentIntersectsRectInteriorSpec(src, c4, dr)) >= 3
-  }
-
-  method CellOccludedByRect(source: Point, x: int, y: int, r: Rectangle) returns (occluded: bool)
-    ensures occluded == CellOccludedByRectSpec(source, x, y, r)
-  {
-    occluded := CellOccludedByRectSpec(source, x, y, r);
+      SegmentIntersectsRectInterior(src, c1, dr),
+      SegmentIntersectsRectInterior(src, c2, dr),
+      SegmentIntersectsRectInterior(src, c3, dr),
+      SegmentIntersectsRectInterior(src, c4, dr)) >= 3
   }
 
   // A pure visibility specification for a single destination cell given an
   // ordered list of (already extended) blocking rectangles.
   //
   // The source cell is always visible, matching the final FOV result.
-  predicate VisibleCellSpec(source: Point, dest: Point, rectangles: seq<Rectangle>)
+  ghost predicate VisibleCell(source: Point, dest: Point, rectangles: seq<Rectangle>)
     decreases |rectangles|
   {
     if dest == source then
@@ -145,55 +133,9 @@ module Visibility {
     else if |rectangles| == 0 then
       true
     else
-      VisibleCellSpec(source, dest, rectangles[..|rectangles| - 1]) &&
-      !CellOccludedByRectSpec(source, dest.x, dest.y, rectangles[|rectangles| - 1])
+      VisibleCell(source, dest, rectangles[..|rectangles| - 1]) &&
+      !CellOccludedByRect(source, dest.x, dest.y, rectangles[|rectangles| - 1])
   }
-
-  lemma VisibleCellSpecEmpty(source: Point, dest: Point)
-    ensures VisibleCellSpec(source, dest, [])
-  {
-  }
-
-  lemma SourceCellAlwaysVisible(source: Point, rectangles: seq<Rectangle>)
-    ensures VisibleCellSpec(source, source, rectangles)
-  {
-  }
-
-  lemma VisibleCellSpecAppendOne(source: Point, dest: Point, processed: seq<Rectangle>, r: Rectangle)
-    ensures VisibleCellSpec(source, dest, processed + [r]) ==
-            (if dest == source then
-               true
-             else
-               VisibleCellSpec(source, dest, processed) &&
-               !CellOccludedByRectSpec(source, dest.x, dest.y, r))
-  {
-  }
-
-  lemma VisibleCellSpecMonotone(source: Point, dest: Point, rectangles: seq<Rectangle>, r: Rectangle)
-    ensures VisibleCellSpec(source, dest, rectangles + [r]) ==> VisibleCellSpec(source, dest, rectangles)
-  {
-  }
-
-  // Executable single-cell checker that matches the pure visibility predicate.
-  method VisibleCell(source: Point, dest: Point, rectangles: seq<Rectangle>) returns (visible: bool)
-    ensures visible == VisibleCellSpec(source, dest, rectangles)
-    decreases |rectangles|
-  {
-    if dest == source {
-      visible := true;
-    } else if |rectangles| == 0 {
-      visible := true;
-    } else {
-      var prefix := rectangles[..|rectangles| - 1];
-      var last := rectangles[|rectangles| - 1];
-
-      var prefixVisible := VisibleCell(source, dest, prefix);
-      var occ := CellOccludedByRect(source, dest.x, dest.y, last);
-
-      visible := prefixVisible && !occ;
-    }
-  }
-
 
   // --------------------------------------------------------------------------
   // Rectangle extension
@@ -247,16 +189,9 @@ module Visibility {
     }
   }
 
-  predicate RectangleContains(outer: Rectangle, inner: Rectangle) {
+  ghost predicate RectangleContains(outer: Rectangle, inner: Rectangle) {
     outer.minX <= inner.minX && outer.minY <= inner.minY &&
     inner.maxX <= outer.maxX && inner.maxY <= outer.maxY
-  }
-
-  lemma RectangleContainsTransitive(outer: Rectangle, middle: Rectangle, inner: Rectangle)
-    requires RectangleContains(outer, middle)
-    requires RectangleContains(middle, inner)
-    ensures RectangleContains(outer, inner)
-  {
   }
 
   // Return the two relevant (tangent) corners of rectangle as seen from source.
@@ -354,28 +289,28 @@ module Visibility {
     requires RectangleInRange(r, grid)
     requires forall j :: 0 <= j < |processed| ==> RectangleInRange(processed[j], grid)
     requires forall x, y :: 0 <= x < grid.Length0 && 0 <= y < grid.Length1 ==>
-                              visible[x, y] == VisibleCellSpec(source, Point(x, y), processed)
+                              visible[x, y] == VisibleCell(source, Point(x, y), processed)
     modifies visible
     ensures forall x, y :: 0 <= x < grid.Length0 && 0 <= y < grid.Length1 ==>
-                             visible[x, y] == VisibleCellSpec(source, Point(x, y), processed + [r])
+                             visible[x, y] == VisibleCell(source, Point(x, y), processed + [r])
   {
     for x := 0 to grid.Length0
       invariant 0 <= x <= grid.Length0
       invariant forall x0, y0 :: 0 <= x0 < x && 0 <= y0 < grid.Length1 ==>
-                                   visible[x0, y0] == VisibleCellSpec(source, Point(x0, y0), processed + [r])
+                                   visible[x0, y0] == VisibleCell(source, Point(x0, y0), processed + [r])
       invariant forall x0, y0 :: x <= x0 < grid.Length0 && 0 <= y0 < grid.Length1 ==>
-                                   visible[x0, y0] == VisibleCellSpec(source, Point(x0, y0), processed)
+                                   visible[x0, y0] == VisibleCell(source, Point(x0, y0), processed)
     {
       for y := 0 to grid.Length1
         invariant 0 <= y <= grid.Length1
         invariant forall x0, y0 :: 0 <= x0 < x && 0 <= y0 < grid.Length1 ==>
-                                     visible[x0, y0] == VisibleCellSpec(source, Point(x0, y0), processed + [r])
+                                     visible[x0, y0] == VisibleCell(source, Point(x0, y0), processed + [r])
         invariant forall y0 :: 0 <= y0 < y ==>
-                                 visible[x, y0] == VisibleCellSpec(source, Point(x, y0), processed + [r])
+                                 visible[x, y0] == VisibleCell(source, Point(x, y0), processed + [r])
         invariant forall y0 :: y <= y0 < grid.Length1 ==>
-                                 visible[x, y0] == VisibleCellSpec(source, Point(x, y0), processed)
+                                 visible[x, y0] == VisibleCell(source, Point(x, y0), processed)
         invariant forall x0, y0 :: x < x0 < grid.Length0 && 0 <= y0 < grid.Length1 ==>
-                                     visible[x0, y0] == VisibleCellSpec(source, Point(x0, y0), processed)
+                                     visible[x0, y0] == VisibleCell(source, Point(x0, y0), processed)
       {
         var dest := Point(x, y);
         var occ := CellOccludedByRect(source, x, y, r);
@@ -402,7 +337,7 @@ module Visibility {
     ensures  forall j :: 0 <= j < |extended| ==> RectangleInRange(extended[j], grid)
     ensures  forall j :: 0 <= j < |extended| ==> RectangleContains(extended[j], rectangles_in[j])
     ensures  forall x, y :: 0 <= x < grid.Length0 && 0 <= y < grid.Length1 ==>
-                              visible[x, y] == VisibleCellSpec(source, Point(x, y), extended)
+                              visible[x, y] == VisibleCell(source, Point(x, y), extended)
   {
     var rectangles := new Rectangle[rectangles_in.Length](
                                     i requires 0 <= i < rectangles_in.Length reads rectangles_in => rectangles_in[i]);
@@ -418,7 +353,7 @@ module Visibility {
       invariant forall j :: i <= j < rectangles.Length ==> rectangles[j] == rectangles_in[j]
       invariant forall j :: 0 <= j < i ==> RectangleContains(extended[j], rectangles_in[j])
       invariant forall x, y :: 0 <= x < grid.Length0 && 0 <= y < grid.Length1 ==>
-                                 visible[x, y] == VisibleCellSpec(source, Point(x, y), extended)
+                                 visible[x, y] == VisibleCell(source, Point(x, y), extended)
     {
       var r := ExtendRectangle(grid, source, rectangles, i);
       rectangles[i] := r;

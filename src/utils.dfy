@@ -15,21 +15,21 @@ module Utils {
     0 <= p.x < grid.Length0 && 0 <= p.y < grid.Length1
   }
 
-  predicate WalkablePoint<T>(p: Point, grid: array2<T>, traversable: T -> bool)
+  ghost predicate WalkablePoint<T>(p: Point, grid: array2<T>, traversable: T -> bool)
     reads grid
   {
     ValidPoint(p, grid) && traversable(grid[p.x, p.y])
   }
 
   // 4-connected adjacency on the grid.
-  predicate Adjacent(p: Point, q: Point)
+  ghost predicate Adjacent(p: Point, q: Point)
   {
     (p.x == q.x && (p.y + 1 == q.y || q.y + 1 == p.y)) ||
     (p.y == q.y && (p.x + 1 == q.x || q.x + 1 == p.x))
   }
 
   // Every point in the path is inside the grid and traversable.
-  predicate WalkablePath<T>(path: seq<Point>, grid: array2<T>, traversable: T -> bool)
+  ghost predicate WalkablePath<T>(path: seq<Point>, grid: array2<T>, traversable: T -> bool)
     reads grid
     decreases |path|
   {
@@ -38,7 +38,7 @@ module Utils {
   }
 
   // Consecutive path points are 4-neighbor moves.
-  predicate ConsecutivePath(path: seq<Point>)
+  ghost predicate ConsecutivePath(path: seq<Point>)
     decreases |path|
   {
     |path| <= 1 ||
@@ -46,7 +46,7 @@ module Utils {
   }
 
   // A non-empty, walkable, 4-connected path from start to goal.
-  predicate FeasiblePath<T>(path: seq<Point>, start: Point, goal: Point, grid: array2<T>, traversable: T -> bool)
+  ghost predicate FeasiblePath<T>(path: seq<Point>, start: Point, goal: Point, grid: array2<T>, traversable: T -> bool)
     reads grid
   {
     0 < |path| &&
@@ -56,14 +56,14 @@ module Utils {
     ConsecutivePath(path)
   }
 
-  predicate RectangleInRange<T>(rectangle: Rectangle, grid: array2<T>)
+  ghost predicate RectangleInRange<T>(rectangle: Rectangle, grid: array2<T>)
     reads grid
   {
     0 <= rectangle.minX && rectangle.minX < rectangle.maxX && rectangle.maxX <= grid.Length0 &&
     0 <= rectangle.minY && rectangle.minY < rectangle.maxY && rectangle.maxY <= grid.Length1
   }
 
-  predicate RectangleMatchesGrid<T>(rectangle: Rectangle, grid: array2<T>, visibility_blocking: T -> bool)
+  ghost predicate RectangleMatchesGrid<T>(rectangle: Rectangle, grid: array2<T>, visibility_blocking: T -> bool)
     requires RectangleInRange(rectangle, grid)
     reads grid
   {
