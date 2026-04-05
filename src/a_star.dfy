@@ -93,7 +93,7 @@ module AStar {
   }
 
   // A* on a 4-connected grid.
-  // Returns a feasible path from agent_position to goal, or [] if no path is found.
+  // Returns a feasible path from agent_position to goal, or [] if the guards fail or the bounded search does not find one.
   method A_Star<T>(grid: array2<T>, agent_position: Point, goal: Point, traversable: T -> bool) returns (path: seq<Point>)
     ensures path == [] || FeasiblePath(path, agent_position, goal, grid, traversable)
     ensures !ValidPoint(agent_position, grid) || !ValidPoint(goal, grid) ==> path == []

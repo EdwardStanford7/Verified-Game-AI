@@ -23,7 +23,8 @@ module Pathfind {
       reads this, grid
     {
       forall j :: 0 <= j < |rectangles| ==>
-                    UtilsPrivate.RectangleInRange(rectangles[j], grid)
+                    UtilsPrivate.RectangleInRange(rectangles[j], grid) &&
+                    UtilsPrivate.RectangleMatchesGrid(rectangles[j], grid, visibility_blocking)
     }
 
     constructor(grid: array2<T>, visibility_blocking: T -> bool, traversable: T -> bool)
@@ -45,7 +46,11 @@ module Pathfind {
       requires Utils.ValidPoint(agent_position, grid)
       ensures Valid()
       ensures grid.Length0 == visible.Length0 && grid.Length1 == visible.Length1
+      ensures visible[agent_position.x, agent_position.y]
       ensures forall p :: p in path ==> Utils.ValidPoint(p, grid)
+      ensures path != [] ==> path[0] == agent_position
+      ensures path != [] ==> Utils.ValidPoint(path[|path| - 1], grid)
+      ensures path != [] ==> visible[path[|path| - 1].x, path[|path| - 1].y]
     {
       var rectangles_array := new UtilsPrivate.Rectangle[|rectangles|](
                                                          i requires 0 <= i < |rectangles| => rectangles[i]);
@@ -114,13 +119,23 @@ module Pathfind {
       agent_position: Utils.Point)
       returns (goal: Utils.Point)
       requires grid.Length0 == visible.Length0 && grid.Length1 == visible.Length1
+      requires Utils.ValidPoint(agent_position, grid)
+      requires visible[agent_position.x, agent_position.y]
+      ensures Utils.ValidPoint(goal, grid)
+      ensures visible[goal.x, goal.y]
     {
       goal := agent_position; // Default to current position if no visible cell has value > 0.
 
       var best_value := 0.0;
 
-      for x := 0 to grid.Length0 {
-        for y := 0 to grid.Length1 {
+      for x := 0 to grid.Length0
+        invariant Utils.ValidPoint(goal, grid)
+        invariant visible[goal.x, goal.y]
+      {
+        for y := 0 to grid.Length1
+          invariant Utils.ValidPoint(goal, grid)
+          invariant visible[goal.x, goal.y]
+        {
           if visible[x, y] {
             var value := value_function(agent_position, Utils.Point(x, y), grid[x, y]);
             if value > best_value {

@@ -337,7 +337,6 @@ module Visibility {
     rOut := base;
     var p1, p2 := RelevantVertices(source, rOut);
     rOut := ExtendRectangleAtPoint(grid, source, rectangles, idx, rOut, p1);
-    var afterP1 := rOut;
     rOut := ExtendRectangleAtPoint(grid, source, rectangles, idx, rOut, p2);
   }
 

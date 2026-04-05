@@ -86,7 +86,6 @@ module Utils {
     requires FeasiblePath(path, start, goal, grid, traversable)
     ensures forall p :: p in path ==> WalkablePoint(p, grid, traversable)
   {
-    assert WalkablePath(path, grid, traversable);
     assert forall p :: p in path ==> WalkablePoint(p, grid, traversable) by {
       forall p | p in path
         ensures WalkablePoint(p, grid, traversable)
