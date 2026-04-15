@@ -3,14 +3,19 @@ include "pathfind.dfy"
 import opened Utils
 import opened Pathfind
 
-datatype Cell = Empty | Low | High | Food
+datatype Cell = Empty | Low | High | Goal
 
-method PrintGrid(grid: array2<Cell>)
+method PrintGrid(grid: array2<Cell>, agent_position: Point)
+  requires 0 <= agent_position.x < grid.Length0 && 0 <= agent_position.y < grid.Length1
 {
   for i := 0 to grid.Length0 {
     for j := 0 to grid.Length1 {
       var c := grid[i, j];
-      print if c == High then "H " else if c == Low then "L " else if c == Food then "F " else ". ";
+      if i == agent_position.x && j == agent_position.y {
+        print "A ";
+      } else{
+        print if c == High then "H " else if c == Low then "L " else if c == Goal then "G " else ". ";
+      }
     }
     print "\n";
   }
@@ -28,7 +33,7 @@ method PrintPath(grid: array2<Cell>, visible: array2<bool>, path: seq<Point>, ag
         print_grid[i, j] := "A ";
       } else if visible[i, j] {
         var c := grid[i, j];
-        print_grid[i, j] := if c == High then "H " else if c == Low then "L " else if c == Food then "F " else ". ";
+        print_grid[i, j] := if c == High then "H " else if c == Low then "L " else if c == Goal then "G " else ". ";
       } else {
         print_grid[i, j] := "  ";
       }
@@ -78,21 +83,23 @@ method Main()
   }
 
   // Some goals to pathfind to.
-  grid[4,16]:= Food;
-  grid[15,4]:= Food;
-  grid[20,20]:= Food;
+  grid[4,16]:= Goal;
+  grid[15,4]:= Goal;
+  grid[20,20]:= Goal;
 
-  print "Initial Grid:\n";
-  PrintGrid(grid);
+  var agent_position :=  Utils.Point(12, 12);
+
+  print "\nInitial Grid:\n";
+  PrintGrid(grid, agent_position);
 
   var visibility_blocking := (c: Cell) => c == High;
   var traversable := (c: Cell) => c != High && c != Low;
-  var value_function := (agent_pos: Point, target_pos: Point, cell: Cell) => (if cell == Food then 1.0 else 0.0) / (ManhattanDistance(agent_pos, target_pos) + 1) as real; // Preference for closer goals if multiple visible.
+  var value_function := (agent_pos: Point, target_pos: Point, cell: Cell) => (if cell == Goal then 1.0 else 0.0) / (ManhattanDistance(agent_pos, target_pos) + 1) as real; // Preference for closer goals if multiple visible.
 
   var pf := new Pathfinder<Cell>(grid, visibility_blocking, traversable);
-  var start := Utils.Point(12, 12);
-  var path, visible := pf.FindPath(start, value_function);
+  var path, visible := pf.FindPath(agent_position, value_function);
 
   print "\nPath to Best Visible Goal:\n";
-  PrintPath(grid, visible, path, start);
+  PrintPath(grid, visible, path, agent_position);
+  print "\n";
 }
