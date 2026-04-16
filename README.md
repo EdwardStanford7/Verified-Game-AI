@@ -13,6 +13,8 @@ Game AI often "cheats" when given overly broad heuristics or goals. This reposit
 
 The result is both more believable AI and more reliable game behavior.
 
+Demo project with `make run`
+
 ## Technical Details
 
 ### Grid-Based World
